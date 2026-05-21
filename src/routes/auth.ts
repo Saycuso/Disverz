@@ -1,22 +1,11 @@
 import { Router, type Request, type Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg'; // 1. Import the native pg Pool
-import { PrismaPg } from '@prisma/adapter-pg'; // 2. Import the Prisma adapter
+import { prisma } from '../lib/prisma.js';
 import jwt from 'jsonwebtoken'; // ADD THIS IMPORT
 import dotenv from 'dotenv'
 
 dotenv.config();
 
 const router = Router();
-
-// 3. Create a connection pool using your cloud database URL
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-// 4. Wrap the pool in the adapter
-const adapter = new PrismaPg(pool);
-
-// 5. EXPLICITLY HAND PRISMA THE ADAPTER
-const prisma = new PrismaClient({ adapter });
 
 // Route 1: Redirect user to Discord's login page
 router.get('/discord/login', (req: Request, res: Response) => {
@@ -79,10 +68,14 @@ router.get('/discord/callback', async (req: Request, res: Response) => {
             { expiresIn: '7d' } // Token expires in 7 days
         );
 
+        res.cookie('auth_token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        })
         // 2. Redirect the browser BACK to the Next.js frontend, attaching the token in the URL
-        const frontendRedirectUrl = `${process.env.FRONTEND_URL}/auth-success?token=${token}`;
-        
-        res.redirect(frontendRedirectUrl);
+        res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
 
     } catch (error) {
         console.error('OAuth Error:', error);

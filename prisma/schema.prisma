@@ -16,15 +16,67 @@ model User {
 }
 
 model Server {
-  id           String   @id @default(uuid())
-  discordId    String   @unique 
-  name         String
-  description  String
-  inviteLink   String
-  ownerId      String   
-  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  lastBumpedAt DateTime @default(now())
-  pulseScore   Int      @default(0) 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(uuid())
+  discordId       String   @unique 
+  name            String
+  description     String
+  inviteLink      String
+  
+  // UI & Listing Fields
+  iconUrl         String?
+  category        String   @default("general")
+  tags            String[] // Postgres array support
+  memberCount     Int      @default(0)
+  plan            String   @default("free")
+
+  ownerId         String   
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Vitals & Ranking Engine
+  rawScore        Float    @default(0.0)
+  lastChallengeAt DateTime?
+  lastHumanMsgAt  DateTime? @default(now())
+  isDormant       Boolean   @default(false)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  challenges      Challenge[]
+  joinClicks      JoinClick[]
+}
+
+model Question {
+  id         String   @id @default(uuid())
+  category   String   
+  text       String
+  answer     String
+  challenges Challenge[]
+  createdAt  DateTime @default(now())
+}
+
+model Challenge {
+  id                  String    @id @default(uuid())
+  serverId            String
+  server              Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  
+  questionId          String
+  question            Question  @relation(fields: [questionId], references: [id])
+  
+  postedAt            DateTime  @default(now())
+  answeredAt          DateTime?
+  answeredByUserId    String?
+  speedMs             Int?
+  diversityMultiplier Float?
+  scoreAwarded        Float?
+  isValid             Boolean   @default(false)
+
+  // Critical for fast "last 10" diversity queries
+  @@index([serverId, answeredAt(sort: Desc)]) 
+}
+
+model JoinClick {
+  id        String   @id @default(uuid())
+  serverId  String
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  clickedAt DateTime @default(now())
 }
