@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import jwt from 'jsonwebtoken'; // ADD THIS IMPORT
 import dotenv from 'dotenv'
+import {requireAuth, type AuthRequest} from '../middlewares/authMiddleware.js'
 
 dotenv.config();
 
@@ -82,5 +83,23 @@ router.get('/discord/callback', async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Authentication failed' });
     }
 });
+
+router.get('/me', requireAuth, async(req:AuthRequest, res: Response) => {
+    try{
+        const user = await prisma.user.findUnique({
+            where: {id: req.userId}
+        });
+
+        if(!user){
+            res.status(404).json({error: 'User Not found'});
+            return;
+        }
+        res.json(user)
+    }
+    catch(error){
+        console.error('Fetch User Error:', error);
+        res.status(500).json({error: 'Internal server error'});
+    }
+})
 
 export default router;
