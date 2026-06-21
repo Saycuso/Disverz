@@ -86,6 +86,10 @@ router.get('/discord/callback', async (req: Request, res: Response) => {
 
 router.get('/me', requireAuth, async(req:AuthRequest, res: Response) => {
     try{
+        if (!req.userId) {
+    res.status(401).json({ error: "Unauthorized: Missing user ID" });
+    return;
+}
         const user = await prisma.user.findUnique({
             where: {id: req.userId}
         });
