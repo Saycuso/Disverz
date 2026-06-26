@@ -27,6 +27,7 @@ model Server {
   category        String   @default("general")
   tags            String[] // Postgres array support
   memberCount     Int      @default(0)
+  joinCount       Int      @default(0) // 👑 ADDED THIS LINE HERE! Tracks fast, 
   plan            String   @default("free")
 
   ownerId         String   
