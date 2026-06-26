@@ -43,6 +43,8 @@ model Server {
 
   challenges      Challenge[]
   joinClicks      JoinClick[]
+
+  @@index([isDormant, lastChallengeAt])
 }
 
 model Question {
@@ -52,6 +54,7 @@ model Question {
   answer     String
   challenges Challenge[]
   createdAt  DateTime @default(now())
+  @@index([category])
 }
 
 model Challenge {
@@ -80,3 +83,4 @@ model JoinClick {
   server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
   clickedAt DateTime @default(now())
 }
+

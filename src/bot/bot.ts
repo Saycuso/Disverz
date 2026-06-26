@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits } from "discord.js";
 import { registerGuildMemberAdd } from "./listeners/guildMemberAdd.js";
 import { startDormancyCheck } from "./dormancyCheck.js";
 import { registerMessageCreate } from "./listeners/messageCreate.js";
+import { startChallengeScheduler } from "./challengeScheduler.js";
 
 const client = new Client({
   intents: [
@@ -17,6 +18,7 @@ client.once("clientReady", () => {
   registerGuildMemberAdd(client);
   registerMessageCreate(client);
   startDormancyCheck(); // ← add this
+  startChallengeScheduler(client); // ← this line must exist
 });
 
 // 3. The Ignition Function
