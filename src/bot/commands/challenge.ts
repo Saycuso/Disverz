@@ -1,9 +1,9 @@
-import { 
-  SlashCommandBuilder, 
+import {  
   CommandInteraction,
   Message,
   TextChannel
 } from 'discord.js';
+import { SlashCommandBuilder } from '@discordjs/builders';
 import { prisma } from '../../lib/prisma.js';
 
 export const data = new SlashCommandBuilder()

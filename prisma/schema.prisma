@@ -11,6 +11,8 @@ model User {
   discordId String   @unique
   username  String
   avatar    String?
+  accessToken  String?  // 👑 ADDED: To fetch user's servers from Discord
+  refreshToken String?  // 👑 ADDED: To keep the access active
   servers   Server[] 
   createdAt DateTime @default(now())
 }
