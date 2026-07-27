@@ -1,140 +1,141 @@
-import {  
-  CommandInteraction,
-  Message,
-  TextChannel
-} from 'discord.js';
-import { SlashCommandBuilder } from '@discordjs/builders';
-import { prisma } from '../../lib/prisma.js';
+import { CommandInteraction, MessageReaction, User, TextChannel } from 'discord.js'; 
+import { SlashCommandBuilder } from '@discordjs/builders'; 
+import { prisma } from '../../lib/prisma.js'; 
 
 export const data = new SlashCommandBuilder()
-  .setName('challenge')
-  .setDescription('Trigger a Disverz trivia challenge to bump your server.');
+    .setName('challenge')
+    .setDescription('Trigger a Disverz trivia challenge to bump your server.'); 
 
-export async function execute(interaction: CommandInteraction) {
-  const guildId = interaction.guildId;
-  if (!guildId) {
-    await interaction.reply({ content: 'This command only works inside a server.', ephemeral: true });
-    return;
-  }
+export async function execute(interaction: CommandInteraction) { 
+    const guildId = interaction.guildId; 
+    const channel = interaction.channel as TextChannel; 
 
-  // 1. Target Acquisition
-  const server = await prisma.server.findUnique({
-    where: { discordId: guildId }
-  });
+    if (!guildId || !channel) { 
+        await interaction.reply({ content: 'This command only works inside a server text channel.', ephemeral: true }); 
+        return; 
+    } 
 
-  if (!server) {
-    await interaction.reply({ 
-      content: '❌ This server is not registered. The owner must list it on disverz.com first.', 
-      ephemeral: true 
+    // 1. Target Acquisition 
+    const server = await prisma.server.findUnique({ where: { discordId: guildId } }); 
+    if (!server) { 
+        await interaction.reply({ content: '❌ This server is not registered. The owner must list it on disverz.com first.', ephemeral: true }); 
+        return; 
+    } 
+
+    // 2. Cooldown Strategy 
+    const COOLDOWN_HOURS = 2; 
+    if (server.lastChallengeAt) { 
+        const hoursSinceLast = (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60); 
+        if (hoursSinceLast < COOLDOWN_HOURS) { 
+            const minutesLeft = Math.ceil((COOLDOWN_HOURS - hoursSinceLast) * 60); 
+            await interaction.reply({ content: `⏳ The blade is resting. Next challenge available in **${minutesLeft} minutes**.`, ephemeral: true }); 
+            return; 
+        } 
+    } 
+
+    // 3. Fetch the Weapon 
+    const questions = await prisma.$queryRaw<Array<{ id: string; category: string; text: string; answer: string; }>>` 
+        SELECT * FROM "Question" WHERE category = ${server.category} ORDER BY RANDOM() LIMIT 1 
+    `; 
+    const question = questions[0]; // 🛠️ FIXED: Added index [0] so it grabs the actual object, not the array
+    if (!question) { 
+        await interaction.reply({ content: '❌ No questions found for this category.', ephemeral: true }); 
+        return; 
+    } 
+
+    // 4. The Parser 
+    const parts = question.text.split('|'); 
+    let displayMessage = `❓ **${question.text}**`; 
+    if (parts.length === 5) { 
+        const [actualQuestion, optA, optB, optC, optD] = parts; 
+        displayMessage = `❓ **${actualQuestion}**\n\n🇦 **A)** ${optA}\n🇧 **B)** ${optB}\n🇨 **C)** ${optC}\n🇩 **D)** ${optD}`; 
+    } 
+
+      // 5. Deploy the Challenge & Paint the Reactions 
+    const response = await interaction.reply({ 
+        content: `🚨 **DISVERZ CHALLENGE INITIATED** 🚨\n\n**Category:** ${question.category.toUpperCase()}\n\n${displayMessage}\n\n*Tap the correct reaction below to secure the bump!*`, 
+        withResponse: true 
+    }); 
+
+    const message = response.resource?.message;
+    if (!message) return;
+
+
+    try { 
+        await message.react('🇦'); 
+        await message.react('🇧'); 
+        await message.react('🇨'); 
+        await message.react('🇩'); 
+    } catch (error) { 
+        console.error('Failed to deploy reaction buttons:', error); 
+    } 
+
+    // 👑 RESTORED: Log the challenge in the database BEFORE we launch the collector
+    const challenge = await prisma.challenge.create({
+        data: {
+            serverId: server.id,
+            questionId: question.id,
+        }
     });
-    return;
-  }
 
-  // 2. Cooldown Strategy (Prevents spamming the command)
-  const COOLDOWN_HOURS = 2; // Fixed at 2 hours for V1
-  if (server.lastChallengeAt) {
-    const hoursSinceLast = (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60);
-    if (hoursSinceLast < COOLDOWN_HOURS) {
-      const minutesLeft = Math.ceil((COOLDOWN_HOURS - hoursSinceLast) * 60);
-      await interaction.reply({ 
-        content: `⏳ The blade is resting. Next challenge available in **${minutesLeft} minutes**.`, 
-        ephemeral: true 
-      });
-      return;
-    }
-  }
-
-  // 3. Draw the Weapon (Fetch Question)
-  const questions = await prisma.$queryRaw<Array<{
-    id: string; category: string; text: string; answer: string;
-  }>>`
-    SELECT * FROM "Question"
-    WHERE category = ${server.category}
-    ORDER BY RANDOM()
-    LIMIT 1
-  `;
-
-  const question = questions[0];
-  if (!question) {
-    await interaction.reply({ content: '❌ No questions found for this category.', ephemeral: true });
-    return;
-  }
-
-  // 4. Fire the Challenge
-  await interaction.reply(
-    `🚨 **DISVERZ CHALLENGE INITIATED** 🚨\n\n**Category:** ${question.category.toUpperCase()}\n\n❓ **${question.text}**\n\n*The first human to answer correctly secures the bump on disverz.com.*`
-  );
-
-  const challenge = await prisma.challenge.create({
-    data: {
-      serverId: server.id,
-      questionId: question.id,
-    }
-  });
-
-  // 5. The Collector (Listens strictly in this channel for 15 minutes)
-  const channel = interaction.channel as TextChannel;
-  const filter = (msg: Message) => !msg.author.bot;
-  const collector = channel.createMessageCollector({ 
-    filter, 
-    time: 2 * 60 * 1000 
-  });
-
-  collector.on('collect', async (msg: Message) => {
-    const userAnswer = msg.content.trim().toLowerCase();
-    const correctAnswer = question.answer.trim().toLowerCase();
+    // 6. The Reaction Collector 
+    const emojiMap: Record<string, string> = { 'A': '🇦', 'B': '🇧', 'C': '🇨', 'D': '🇩' }; 
+    const targetEmoji = emojiMap[question.answer.trim().toUpperCase()]; 
     
-    // We only react if the answer is completely correct
-    if (userAnswer !== correctAnswer) return;
+    const filter = (reaction: MessageReaction, user: User) => { 
+        return ['🇦', '🇧', '🇨', '🇩'].includes(reaction.emoji.name as string) && !user.bot; 
+    }; 
 
-    // --- ANTI-ABUSE SHIELD ---
-    const responseTimeMs = msg.createdTimestamp - interaction.createdTimestamp;
-    
-    // Speed Check: Under 2.5s is mathematically impossible for humans
-    if (responseTimeMs < 2500) {
-      await msg.reply('⚡ **BEEP BOOP.** You answered faster than humanly possible. Script detected. Challenge burned.');
-      collector.stop('busted');
-      return;
-    }
+    const collector = message.createReactionCollector({ filter, time: 2 * 60 * 1000 }); 
 
-    // Veteran Check: Account must be 7 days old
-    const accountAgeMs = Date.now() - msg.author.createdTimestamp;
-    if (accountAgeMs < (7 * 24 * 60 * 60 * 1000)) {
-      await msg.reply('🛑 **ACCESS DENIED.** Only veteran Discord accounts (7+ days old) can secure the bump.');
-      return;
-    }
+    collector.on('collect', async (reaction: MessageReaction, user: User) => { 
+        if (reaction.emoji.name !== targetEmoji) return; 
 
-    // --- VICTORY CONDITION (V1 Math-Free Bump) ---
-    collector.stop('answered');
+        // --- ANTI-ABUSE SHIELD --- 
+        const responseTimeMs = Date.now() - message.createdTimestamp; 
+        if (responseTimeMs < 1500) { 
+            await channel.send(`⚡ **BEEP BOOP.** <@${user.id}> reacted faster than humanly possible. Script detected. Challenge burned.`); 
+            collector.stop('busted'); 
+            return; 
+        } 
 
-    await prisma.$transaction([
-      prisma.challenge.update({
-        where: { id: challenge.id },
-        data: {
-          answeredByUserId: msg.author.id,
-          answeredAt: new Date(),
-          speedMs: responseTimeMs,
-          isValid: true,
-        }
-      }),
-      prisma.server.update({
-        where: { id: server.id },
-        data: {
-          lastChallengeAt: new Date(), // This is the ONLY thing that matters for the V1 Active tab
-          lastHumanMsgAt: new Date(),
-          isDormant: false,
-        }
-      })
-    ]);
+        const accountAgeMs = Date.now() - user.createdTimestamp; 
+        if (accountAgeMs < (7 * 24 * 60 * 60 * 1000)) { 
+            await channel.send(`🛑 **ACCESS DENIED.** <@${user.id}>, only veteran Discord accounts (7+ days old) can secure the bump.`); 
+            return; 
+        } 
 
-    await channel.send(
-      `🔥 **VICTORY!** **${msg.author.username}** answered correctly in ${(responseTimeMs / 1000).toFixed(1)}s.\n\nThis server has been bumped to the top of the Active feed on Disverz!`
-    );
-  });
+        // --- VICTORY CONDITION --- 
+        collector.stop('answered'); 
+        
+        await prisma.$transaction([ 
+            prisma.challenge.update({ 
+                where: { id: challenge.id }, // ⚡ Works perfectly now!
+                data: { 
+                    answeredByUserId: user.id, 
+                    answeredAt: new Date(), 
+                    speedMs: responseTimeMs, 
+                    isValid: true, 
+                } 
+            }),
+            prisma.server.update({ 
+                where: { id: server.id }, 
+                data: { 
+                    lastChallengeAt: new Date(), 
+                    lastHumanMsgAt: new Date(), 
+                    isDormant: false, 
+                } 
+            }) 
+        ]); 
 
-  collector.on('end', async (_, reason) => {
-    if (reason === 'time') {
-      await channel.send('⏰ The challenge has expired. No one secured the bump.');
-    }
-  });
+        await channel.send( 
+            `🔥 **VICTORY!** **${user.username}** identified the correct answer in ${(responseTimeMs / 1000).toFixed(1)}s.\n\nThis server has been bumped to the top of the Active feed on Disverz!` 
+        ); 
+    }); 
+
+    collector.on('end', async (_, reason) => { 
+        if (reason === 'time') { 
+            await channel.send('⏰ The challenge has expired. No one secured the bump.'); 
+        } 
+    }); 
 }

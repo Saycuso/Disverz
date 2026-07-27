@@ -3,9 +3,11 @@ import { prisma } from '../../lib/prisma.js'// adjust path to match your structu
 
 export function registerMessageCreate(client: Client) {
   client.on('messageCreate', async (message) => {
-    console.log(`[DEBUG] From: ${message.author.tag} | Bot: ${message.author.bot} | Guild: ${message.guildId}`); // ADD THIS
 
     if (message.author.bot) return;
+    if(message.webhookId) return;
+    if(message.system) return;
+    if(message.applicationId) return;
     if (!message.guildId) return;
 
     try {
@@ -25,7 +27,8 @@ export function registerMessageCreate(client: Client) {
           where: { discordId: message.guildId },
           data: {
             lastHumanMsgAt: new Date(),
-            isDormant: false
+            isDormant: false,
+            memberCount: message.guild?.memberCount ?? 0
           }
         });
         console.log(`[DEBUG] ✅ Updated lastHumanMsgAt`); // ADD THIS

@@ -32,6 +32,11 @@ model Server {
   joinCount       Int      @default(0) // 👑 ADDED THIS LINE HERE! Tracks fast, 
   plan            String   @default("free")
 
+  // 👑 ADDED: The Command Configuration
+  language           String    @default("English")
+  welcomeChannelId   String?   // Remembers the channel for the Edit UI
+  challengeChannelId String?   // Critical for the Bot to know where to post
+
   ownerId         String   
   owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   
