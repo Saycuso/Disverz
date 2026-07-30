@@ -10,6 +10,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessageReactions
   ],
 });
 
@@ -42,10 +43,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (error) {
       console.error('Command Execution Error:', error);
       // Failsafe reply so the bot doesn't just "think" forever
-      if (interaction.replied || interaction.deferred) {
+
+      try{
+        if (interaction.replied || interaction.deferred) {
         await interaction.followUp({ content: 'There was an error executing this command.', ephemeral: true });
       } else {
         await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
+      }
+      } catch (discordApiError) {
+        console.warn('Could not alert the user about the error because the interaction token expired:', discordApiError);
       }
     }
   }

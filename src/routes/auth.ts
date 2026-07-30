@@ -177,4 +177,17 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Route 5: Logout User
+router.get("/logout", (req: Request, res: Response) => {
+  // 1. Destroy the auth cookie we created during login
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  });
+
+  // 2. Send them back to the frontend
+  res.redirect((process.env.FRONTEND_URL as string) || "http://localhost:3000");
+});
+
 export default router;
