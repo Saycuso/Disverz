@@ -102,7 +102,7 @@ router.get('/discord/callback', async (req: Request, res: Response) => {
             maxAge: 7 * 24 * 60 * 60 * 1000
         });
         
-        res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+        res.redirect('https://vercel.app');
 
     } catch (error) {
         console.error('OAuth Error:', error);
