@@ -10,11 +10,24 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+const allowedOrigins = [
+  frontendUrl,
+  'https://disverz.com',
+  'https://www.disverz.com',
+  'http://localhost:3000'
+];
 app.use(cors({
-    origin: allowedOrigin, // Must exactly match your frontend URL
-    credentials: true, // 👑 CRITICAL: Tells Express to accept the auth cookie
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, postman, or server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Blocked by CORS'));
+    }
+  },
+  credentials: true, // 👑 CRITICAL: Tells Express to accept and send cookies
 }));
 app.use(express.json());
 app.use(cookieParser());
