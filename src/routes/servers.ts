@@ -450,7 +450,7 @@ router.get("/:id/web-challenge", requireAuth, async (req: AuthRequest, res: Resp
       const hoursSinceLast = (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60);
       if (hoursSinceLast < COOLDOWN_HOURS) {
         const minutesLeft = Math.ceil((COOLDOWN_HOURS - hoursSinceLast) * 60);
-        res.status(429).json({ error: `The blade is resting. Next challenge in ${minutesLeft} minutes.` });
+        res.status(429).json({ error: `Cooldown, The Next challenge in ${minutesLeft} minutes.` });
         return;
       }
     }
