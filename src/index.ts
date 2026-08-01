@@ -10,9 +10,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 app.use(cors({
-    origin: 'http://localhost:3000', // Must exactly match your frontend URL
+    origin: allowedOrigin, // Must exactly match your frontend URL
     credentials: true, // 👑 CRITICAL: Tells Express to accept the auth cookie
 }));
 app.use(express.json());
@@ -25,7 +26,7 @@ app.get('/', (req: Request, res: Response) => {
 })
 
 app.listen(PORT, ()=> {
-    console.log(`[SERVER] Disverz API running on the http://localhost:${PORT}`)
+    console.log(`[SERVER] Disverz API running on the ${PORT}`)
     startBot();
 });
 
