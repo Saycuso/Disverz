@@ -77,6 +77,7 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
         category: category || "general",
         tags: tags || [],
         iconUrl: iconUrl || null,
+        welcomeChannelId: welcomeChannelId,
         ownerId: req.userId as string,
       },
     });
