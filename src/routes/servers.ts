@@ -461,7 +461,7 @@ router.get("/:id/web-challenge", requireAuth, async (req: AuthRequest, res: Resp
       id: string; category: string; text: string; answer: string;
     }>>`
       SELECT * FROM "Question"
-      WHERE category = ${targetCategory}
+      WHERE LOWER(category) = ${targetCategory}
       ORDER BY RANDOM()
       LIMIT 1
     `;
