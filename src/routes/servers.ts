@@ -455,13 +455,13 @@ router.get("/:id/web-challenge", requireAuth, async (req: AuthRequest, res: Resp
         return;
       }
     }
-
+    const targetCategory = server.category.toLowerCase();
     // Fetch the Weapon
     const questions = await prisma.$queryRaw<Array<{
       id: string; category: string; text: string; answer: string;
     }>>`
       SELECT * FROM "Question"
-      WHERE category = ${server.category}
+      WHERE category = ${targetCategory}
       ORDER BY RANDOM()
       LIMIT 1
     `;
