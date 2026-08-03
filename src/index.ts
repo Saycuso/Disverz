@@ -16,7 +16,8 @@ const allowedOrigins = [
   frontendUrl,
   'https://disverz.com',
   'https://www.disverz.com',
-  'http://localhost:3000'
+  'http://localhost:3000',
+  'chrome-extension://cbfeabmcldkkohfkdjaclonghkliehbm'
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -24,6 +25,8 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      // 👑 ADD THIS CONSOLE LOG TO SEE THE EXACT BLOCKED PORT
+      console.error(`🚨 CORS BLOCKED THIS EXACT ORIGIN: ${origin}`);
       callback(new Error('Blocked by CORS'));
     }
   },

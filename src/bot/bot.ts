@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, Events } from "discord.js";
 import { registerGuildMemberAdd } from "./listeners/guildMemberAdd.js";
 import { startDormancyCheck } from "./dormancyCheck.js";
 import { registerMessageCreate } from "./listeners/messageCreate.js";
-import * as challengeCommand from "./commands/challenge.js"; 
+import * as bumpCommand from "./commands/challenge.js"; // 👑 UPDATED IMPORT ALIAS
 
 const client = new Client({
   intents: [
@@ -17,11 +17,11 @@ const client = new Client({
 client.once(Events.ClientReady, async () => {
   console.log(`🤖 Disverz Bot is online and logged in as ${client.user?.tag}`);
   
-  // 1. Deploy the Slash Command to Discord
+  // 1. Deploy the Slash Command to Discord (Registers /bump automatically!)
   try {
     if (client.application) {
-      await client.application.commands.set([challengeCommand.data]);
-      console.log('✅ Slash commands successfully deployed to Discord.');
+      await client.application.commands.set([bumpCommand.data]);
+      console.log('✅ /bump Slash command successfully deployed to Discord.');
     }
   } catch (error) {
     console.error('Failed to deploy slash commands:', error);
@@ -37,19 +37,19 @@ client.once(Events.ClientReady, async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === 'challenge') {
+  // 👑 CHECK FOR 'bump' INSTEAD OF 'challenge'
+  if (interaction.commandName === 'bump') {
     try {
-      await challengeCommand.execute(interaction);
+      await bumpCommand.execute(interaction);
     } catch (error) {
       console.error('Command Execution Error:', error);
-      // Failsafe reply so the bot doesn't just "think" forever
 
-      try{
+      try {
         if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: 'There was an error executing this command.', ephemeral: true });
-      } else {
-        await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
-      }
+          await interaction.followUp({ content: 'There was an error executing this command.', ephemeral: true });
+        } else {
+          await interaction.reply({ content: 'There was an error executing this command.', ephemeral: true });
+        }
       } catch (discordApiError) {
         console.warn('Could not alert the user about the error because the interaction token expired:', discordApiError);
       }

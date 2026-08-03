@@ -28,8 +28,6 @@ const questions = Object.values(questionBank).flat();
 async function main() {
   console.log('Seeding question bank...');
 
-  await prisma.question.deleteMany();
-
   await prisma.question.createMany({
     data: questions.map(q => ({
       category: q.category,
