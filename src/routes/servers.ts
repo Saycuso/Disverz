@@ -40,6 +40,7 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
 
     // 👑 2. The Auto-Invite Generator
     let finalInviteLink = "https://discord.gg/pending"; // Fallback just in case
+    let initialMemberCount = 0; // We start at 0, but we'll fetch the real number instantly
 
     try {
       const discordRes = await fetch(
@@ -68,6 +69,22 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
       console.error("Network error while generating invite:", error);
     }
 
+    // 👑 2. FETCH INITIAL MEMBER COUNT BEFORE SAVING
+    try {
+      const guildRes = await fetch(
+        `https://discord.com/api/v10/guilds/${discordId}?with_counts=true`,
+        {
+          headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` }
+        }
+      );
+      if (guildRes.ok) {
+        const guildData = await guildRes.json();
+        initialMemberCount = guildData.approximate_member_count || 0;
+      }
+    } catch (error) {
+      console.error("Failed to fetch initial member count:", error);
+    }
+
     const newServer = await prisma.server.create({
       data: {
         discordId,
@@ -79,6 +96,7 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
         iconUrl: iconUrl || null,
         welcomeChannelId: welcomeChannelId,
         ownerId: req.userId as string,
+        memberCount: initialMemberCount, 
       },
     });
 
