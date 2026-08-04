@@ -279,9 +279,17 @@ interface serverparams {
 // ==========================================
 router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    // Query PostgreSQL for servers matching the logged-in user's ID
+    // 1. Fetch the user to get their Discord ID
+    const user = await prisma.user.findUnique({ where: { id: req.userId as string } });
+
+    // 2. Find servers where they are the Owner OR a Manager
     const myServers = await prisma.server.findMany({
-      where: { ownerId: req.userId as string },
+      where: {
+        OR: [
+          { ownerId: req.userId as string },
+          { managerIds: { has: user?.discordId || "" } }
+        ]
+      },
       orderBy: { createdAt: "desc" }, // Newest first
     });
 
@@ -400,32 +408,33 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const serverId = req.params.id as string;
 
-    // 1. Verify the server exists
+    // 1. FIRST: Fetch the server from database
     const existingServer = await prisma.server.findUnique({
       where: { id: serverId },
     });
 
+    // 2. SECOND: Check if server exists
     if (!existingServer) {
       res.status(404).json({ error: "Server not found" });
       return;
     }
 
-    // 2. Verify Authorization (Only the owner can delete it)
-    if (existingServer.ownerId !== req.userId) {
-      res
-        .status(403)
-        .json({ error: "You do not have permission to delete this server" });
+    // 3. THIRD: Fetch user & verify permissions (Owner OR Manager)
+    const user = await prisma.user.findUnique({ where: { id: req.userId as string } });
+    const isOwner = existingServer.ownerId === req.userId;
+    const isManager = existingServer.managerIds.includes(user?.discordId || "");
+
+    if (!isOwner && !isManager) {
+      res.status(403).json({ error: "You do not have permission to delete this server" });
       return;
     }
 
-    // 3. Wipe it from existence (Prisma Cascade will handle related Challenges/JoinClicks if configured in schema)
+    // 4. Wipe it from existence
     await prisma.server.delete({
       where: { id: serverId },
     });
 
-    res.json({
-      message: "Server successfully removed from the Disverz pulse.",
-    });
+    res.json({ message: "Server successfully removed from the Disverz pulse." });
   } catch (error) {
     console.error("Delete Server Error:", error);
     res.status(500).json({ error: "Failed to delete server" });
@@ -491,6 +500,45 @@ router.post("/:id/web-bump", requireAuth, async (req: AuthRequest, res: Response
   } catch (error) {
     console.error("Web Bump Error:", error);
     res.status(500).json({ error: "Failed to bump server" });
+  }
+});
+
+// ==========================================
+// ADD CO-MANAGER
+// ==========================================
+router.post("/:id/managers", requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { discordId } = req.body; 
+    
+    const server = await prisma.server.findUnique({ where: { id: req.params.id as string} });
+    
+    if (!server) {
+      res.status(404).json({ error: "Server not found" });
+      return;
+    }
+
+    // Only the true original owner can add new managers
+    if (server.ownerId !== req.userId) {
+      res.status(403).json({ error: "Only the server owner can add managers" });
+      return;
+    }
+
+    if (server.managerIds.includes(discordId)) {
+      res.status(409).json({ error: "This user is already a manager" });
+      return;
+    }
+
+    const updated = await prisma.server.update({
+      where: { id: req.params.id as string },
+      data: {
+        managerIds: { push: discordId }
+      }
+    });
+
+    res.json({ message: "Manager added successfully!", server: updated });
+  } catch (error) {
+    console.error("Add Manager Error:", error);
+    res.status(500).json({ error: "Failed to add manager" });
   }
 });
 

@@ -123,7 +123,7 @@ router.get("/guilds", requireAuth, async (req: AuthRequest, res: Response) => {
       res.status(401).json({ error: "Unauthorized: Missing user Id" });
       return;
     }
-    // 1. Retrieve the user and their secure access token from the vault
+
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
     });
@@ -133,7 +133,6 @@ router.get("/guilds", requireAuth, async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // 2. Fetch the raw server list directly from Discord
     const discordRes = await fetch("https://discord.com/api/users/@me/guilds", {
       headers: {
         authorization: `Bearer ${user.accessToken}`,
@@ -141,22 +140,42 @@ router.get("/guilds", requireAuth, async (req: AuthRequest, res: Response) => {
     });
 
     if (!discordRes.ok) {
-      res
-        .status(discordRes.status)
-        .json({ error: "Failed to fetch guilds from Discord" });
+      res.status(discordRes.status).json({ error: "Failed to fetch guilds from Discord" });
       return;
     }
 
     const guilds = await discordRes.json();
 
-    // 3. Filter the list: Only keep servers where the user is the Owner OR has Administrator (0x8) permissions
+    // 1. Filter: Only keep servers where the user is an Admin
     const adminGuilds = guilds.filter((guild: any) => {
       const perms = BigInt(guild.permissions);
       const isAdmin = (perms & BigInt(0x8)) === BigInt(0x8);
-      const isManager = (perms & BigInt(0x20)) === BigInt(0x20); // Manage Guild permission
+      const isManager = (perms & BigInt(0x20)) === BigInt(0x20); 
       return guild.owner || isAdmin || isManager;
     });
 
+    // 👑 2. THE SILENT AUTO-DETECT MAGIC 👑
+    // Get all the Discord Server IDs that Zoe is an admin of
+    const adminGuildIds = adminGuilds.map((g: any) => g.id);
+
+    // Ask the Database: "Are any of these servers ALREADY listed on Disverz?"
+    const alreadyListedServers = await prisma.server.findMany({
+      where: { discordId: { in: adminGuildIds } }
+    });
+
+    // If they are listed, SILENTLY add Zoe as a manager!
+    for (const dbServer of alreadyListedServers) {
+      // If she didn't list it herself, and she isn't a manager yet...
+      if (dbServer.ownerId !== user.id && !dbServer.managerIds.includes(user.discordId)) {
+        await prisma.server.update({
+          where: { id: dbServer.id },
+          data: { managerIds: { push: user.discordId } }
+        });
+        console.log(`Auto-assigned ${user.username} as Co-Manager for ${dbServer.name}!`);
+      }
+    }
+
+    // 3. Return the guilds to the frontend
     res.json(adminGuilds);
   } catch (error) {
     console.error("Fetch Guilds Error:", error);

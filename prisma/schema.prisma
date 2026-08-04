@@ -39,6 +39,7 @@ model Server {
 
   ownerId         String   
   owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  managerIds String[] @default([])
   
   // Vitals & Ranking Engine
   rawScore        Float    @default(0.0)
