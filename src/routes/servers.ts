@@ -97,6 +97,7 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
         welcomeChannelId: welcomeChannelId,
         ownerId: req.userId as string,
         memberCount: initialMemberCount, 
+        lastChallengeAt: new Date()
       },
     });
 
