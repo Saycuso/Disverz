@@ -1,8 +1,8 @@
 import { prisma } from '../lib/prisma.js'
 
 // --- TIME TRAVEL TEST MODE ---
-// A server is dead if silent for 30 seconds
-const DORMANCY_THRESHOLD_MS = 72 * 60 * 60 * 1000; 
+
+const DORMANCY_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; 
 // We check the database every 10 seconds
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; 
 
