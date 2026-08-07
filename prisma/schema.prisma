@@ -37,6 +37,7 @@ model Server {
   language           String    @default("English")
   welcomeChannelId   String?   // Remembers the channel for the Edit UI
   challengeChannelId String?   // Critical for the Bot to know where to post
+  reminderSent          Boolean   @default(false)
 
   ownerId         String   
   owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)

@@ -116,6 +116,7 @@ export async function execute(interaction: CommandInteraction) {
                     lastChallengeAt: new Date(), 
                     lastHumanMsgAt: new Date(), 
                     isDormant: false, 
+                    reminderSent: false // Resets the alarm clock!
                 } 
             }); 
 

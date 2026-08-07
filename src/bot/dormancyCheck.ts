@@ -1,10 +1,16 @@
 import { prisma } from '../lib/prisma.js'
 
-// --- TIME TRAVEL TEST MODE ---
+// ==========================================
+// 🛠️ DEV / TEST MODE (Uncomment to test quickly)
+// ==========================================
+// const DORMANCY_THRESHOLD_MS = 30 * 1000; // 30 seconds
+// const CHECK_INTERVAL_MS = 10 * 1000;     // 10 seconds
 
-const DORMANCY_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; 
-// We check the database every 10 seconds
-const CHECK_INTERVAL_MS = 60 * 60 * 1000; 
+// ==========================================
+// 🚀 PRODUCTION MODE (Active)
+// ==========================================
+const DORMANCY_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; // 30 Days
+const CHECK_INTERVAL_MS = 60 * 60 * 1000;               // 1 Hour
 
 export function startDormancyCheck() {
   setInterval(async () => {

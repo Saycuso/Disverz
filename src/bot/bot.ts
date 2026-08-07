@@ -4,6 +4,7 @@ import { startDormancyCheck } from "./dormancyCheck.js";
 import { registerMessageCreate } from "./listeners/messageCreate.js";
 import * as bumpCommand from "./commands/challenge.js"; // 👑 UPDATED IMPORT ALIAS
 import * as remindersCommand from "../bot/commands/reminder.js"
+import { startReminderEngine } from "./listeners/reminderEngine.js";
 
 const client = new Client({
   intents: [
@@ -35,6 +36,7 @@ client.once(Events.ClientReady, async () => {
   registerGuildMemberAdd(client);
   registerMessageCreate(client); // This now only tracks the 5-min heartbeat
   startDormancyCheck(); // The garbage collector that hides dead servers
+  startReminderEngine(client);
 });
 
 // 3. The Slash Command Listener (The Trigger)
