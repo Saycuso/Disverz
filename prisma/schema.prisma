@@ -23,6 +23,7 @@ model Server {
   name            String
   description     String
   inviteLink      String
+  bumpReminders      Boolean   @default(true)
   
   // UI & Listing Fields
   iconUrl         String?

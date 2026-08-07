@@ -3,6 +3,7 @@ import { registerGuildMemberAdd } from "./listeners/guildMemberAdd.js";
 import { startDormancyCheck } from "./dormancyCheck.js";
 import { registerMessageCreate } from "./listeners/messageCreate.js";
 import * as bumpCommand from "./commands/challenge.js"; // 👑 UPDATED IMPORT ALIAS
+import * as remindersCommand from "../bot/commands/reminder.js"
 
 const client = new Client({
   intents: [
@@ -20,8 +21,11 @@ client.once(Events.ClientReady, async () => {
   // 1. Deploy the Slash Command to Discord (Registers /bump automatically!)
   try {
     if (client.application) {
-      await client.application.commands.set([bumpCommand.data]);
-      console.log('✅ /bump Slash command successfully deployed to Discord.');
+      await client.application.commands.set([
+        bumpCommand.data, 
+        remindersCommand.data
+      ]);
+      console.log('✅ Slash commands successfully deployed to Discord.');
     }
   } catch (error) {
     console.error('Failed to deploy slash commands:', error);
@@ -52,6 +56,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       } catch (discordApiError) {
         console.warn('Could not alert the user about the error because the interaction token expired:', discordApiError);
+      }
+    }
+  }
+
+  // 👑 ROUTER: Handle /reminders
+  else if (interaction.commandName === 'reminders') {
+    try {
+      await remindersCommand.execute(interaction);
+    } catch (error) {
+      console.error('Command Execution Error:', error);
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({ content: 'There was an error updating reminders.', ephemeral: true });
+        } else {
+          await interaction.reply({ content: 'There was an error updating reminders.', ephemeral: true });
+        }
+      } catch (discordApiError) {
+        console.warn('Could not alert the user about the error:', discordApiError);
       }
     }
   }
