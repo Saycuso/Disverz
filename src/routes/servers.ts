@@ -518,7 +518,7 @@ router.post("/:id/web-bump", requireAuth, async (req: AuthRequest, res: Response
     }
 
     // Cooldown Strategy (2 Hours)
-    const COOLDOWN_HOURS = 2;
+    const COOLDOWN_HOURS = 0;
     if (server.lastChallengeAt) {
       const hoursSinceLast = (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60);
       if (hoursSinceLast < COOLDOWN_HOURS) {

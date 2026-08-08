@@ -37,7 +37,7 @@ export async function execute(interaction: CommandInteraction) {
     } 
 
     // 3. Cooldown Strategy 
-    const COOLDOWN_HOURS = 2; 
+    const COOLDOWN_HOURS = 0; 
     if (server.lastChallengeAt) { 
         const hoursSinceLast = (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60); 
         if (hoursSinceLast < COOLDOWN_HOURS) { 
