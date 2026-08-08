@@ -151,10 +151,14 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
 
     // 2. If Welcome Channel changed, forge a new Discord Invite
     let finalInviteLink = existingServer.inviteLink;
+    let currentMemberCount = existingServer.memberCount;
+    let currentName = existingServer.name;
+    let currentIcon = existingServer.iconUrl;
 
     if (
       welcomeChannelId &&
-      welcomeChannelId !== existingServer.welcomeChannelId
+      welcomeChannelId !== existingServer.welcomeChannelId || 
+      finalInviteLink === "https://discord.gg/pending"
     ) {
       try {
         const discordRes = await fetch(
@@ -180,6 +184,28 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // B. Stealth Sync: Update Name, Icon, and Member Count while we are here
+    try {
+      const guildRes = await fetch(
+        `https://discord.com/api/v10/guilds/${serverId}?with_counts=true`,
+        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+      );
+      if (guildRes.ok) {
+        const guildData = await guildRes.json();
+        currentMemberCount = guildData.approximate_member_count || existingServer.memberCount;
+        currentName = guildData.name || existingServer.name;
+        
+        // Format the new icon URL if they changed it
+        if (guildData.icon) {
+          currentIcon = `https://cdn.discordapp.com/icons/${serverId}/${guildData.icon}.png`;
+        } else {
+          currentIcon = null;
+        }
+      }
+    } catch (error) {
+      console.error("Failed to sync live server stats:", error);
+    }
+
     // 3. Update the database
     const updatedServer = await prisma.server.update({
       where: { id: serverId },
@@ -191,6 +217,9 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
         welcomeChannelId,
         challengeChannelId,
         bumpReminders,
+        memberCount: currentMemberCount, // Live members
+        name: currentName,           // Live name
+        iconUrl: currentIcon,        // Live icon
         inviteLink: finalInviteLink,
       },
     });
@@ -521,6 +550,7 @@ router.post("/:id/web-bump", requireAuth, async (req: AuthRequest, res: Response
       data: {
         lastChallengeAt: new Date(),
         isDormant: false,
+        reminderSent: false,
       }
     });
 
