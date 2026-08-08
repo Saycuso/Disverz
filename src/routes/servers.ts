@@ -128,6 +128,7 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
       language,
       welcomeChannelId,
       challengeChannelId,
+      bumpReminders
     } = req.body;
     
 
@@ -189,6 +190,7 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
         language,
         welcomeChannelId,
         challengeChannelId,
+        bumpReminders,
         inviteLink: finalInviteLink,
       },
     });
