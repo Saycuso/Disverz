@@ -9,7 +9,7 @@ export const startReminderEngine = (client: Client) => {
     try {
       // 👑 Define your threshold (e.g., 2 hours ago)
       // Change this math to match whatever your cooldown is!
-      const bumpCooldown = new Date(Date.now() - 2 * 60 * 60 * 1000); 
+      const bumpCooldown = new Date(Date.now() - 30* 1000); 
 
       const serversToRemind = await prisma.server.findMany({
         where: {
