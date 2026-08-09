@@ -16,7 +16,10 @@ export const startReminderEngine = (client: Client) => {
           bumpReminders: true,       // They want reminders
           reminderSent: false,       // We haven't reminded them yet
           challengeChannelId: { not: null }, // They set up a channel
-          updatedAt: { lt: bumpCooldown } // Replace 'updatedAt' with whatever field tracks their last bump/pulse!
+          OR: [
+            { lastChallengeAt: { lt: bumpCooldown } },
+            { lastChallengeAt: null }
+          ] // Replace 'updatedAt' with whatever field tracks their last bump/pulse!
         }
       });
 
