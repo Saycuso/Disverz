@@ -206,11 +206,13 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
 
 // Route 5: Logout User
 router.get("/logout", (req: Request, res: Response) => {
+  const isProd = process.env.NODE_ENV === "production";
   // 1. Destroy the auth cookie we created during login
   res.clearCookie("auth_token", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     sameSite: "lax",
+    domain: isProd ? ".disverz.com" : undefined,
   });
 
   // 2. Send them back to the frontend
