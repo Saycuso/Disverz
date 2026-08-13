@@ -54,6 +54,7 @@ model Server {
 
   challenges      Challenge[]
   joinClicks      JoinClick[]
+  votes           Vote[]
 
   @@index([isDormant, lastChallengeAt])
 }
@@ -95,3 +96,12 @@ model JoinClick {
   clickedAt DateTime @default(now())
 }
 
+model Vote {
+  id        String   @id @default(uuid())
+  serverId  String
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([serverId, userId]) // one vote per user per server total
+}

@@ -232,7 +232,7 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // ==========================================
-// 2. FETCH SERVERS (The Dual-Tab Engine)
+// 2. FETCH SERVERS (The Multi-Tab Engine)
 // ==========================================
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -250,12 +250,22 @@ router.get("/", async (req: Request, res: Response) => {
       }),
     };
 
+    // 👑 7-Day Rolling Window filter for queries
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
     // --- ACTIVE TAB: Chronological Bump ---
     if (sort === "active") {
       const [servers, total] = await Promise.all([
         prisma.server.findMany({
           where: baseWhere,
-          include: { owner: { select: { username: true, avatar: true } } },
+          include: { 
+            owner: { select: { username: true, avatar: true } },
+            _count: { 
+              select: { 
+                votes: { where: { createdAt: { gte: sevenDaysAgo } } } // 👑 Weekly count
+              } 
+            }
+          },
           orderBy: { lastChallengeAt: "desc" }, // Native DB chronological sort
           skip: (page - 1) * limit,
           take: limit,
@@ -276,11 +286,64 @@ router.get("/", async (req: Request, res: Response) => {
       return;
     }
 
+    // 👑 --- VOTED TAB: Hall of Fame (Most Weekly Votes) ---
+    if (sort === "voted") {
+      // Fetch all active servers with their weekly votes
+      const allServers = await prisma.server.findMany({
+        where: baseWhere,
+        include: { 
+          owner: { select: { username: true, avatar: true } },
+          _count: { 
+            select: { 
+              votes: { where: { createdAt: { gte: sevenDaysAgo } } } 
+            } 
+          }
+        },
+      });
+
+      // Sort in memory by highest weekly votes
+      allServers.sort((a, b) => {
+        const votesA = a._count?.votes || 0;
+        const votesB = b._count?.votes || 0;
+
+        if (votesB !== votesA) {
+          return votesB - votesA;
+        }
+
+        const timeA = a.lastChallengeAt ? a.lastChallengeAt.getTime() : 0;
+        const timeB = b.lastChallengeAt ? b.lastChallengeAt.getTime() : 0;
+        return timeB - timeA;
+      });
+      
+      const total = allServers.length;
+      const startIndex = (page - 1) * limit;
+      const paginated = allServers.slice(startIndex, startIndex + limit);
+
+      res.json({
+        data: paginated,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+          feed: "voted",
+        },
+      });
+      return;
+    }
+
     // --- RANKED TAB: Math Decay Engine (For V2) ---
     if (sort === "ranked") {
       const servers = await prisma.server.findMany({
         where: baseWhere,
-        include: { owner: { select: { username: true, avatar: true } } },
+        include: { 
+          owner: { select: { username: true, avatar: true } },
+          _count: { 
+            select: { 
+              votes: { where: { createdAt: { gte: sevenDaysAgo } } } 
+            } 
+          }
+        },
       });
 
       const now = Date.now();
@@ -317,7 +380,7 @@ router.get("/", async (req: Request, res: Response) => {
 
     res
       .status(400)
-      .json({ error: 'Invalid sort parameter. Use "active" or "ranked".' });
+      .json({ error: 'Invalid sort parameter. Use "active", "voted", or "ranked".' });
   } catch (error) {
     console.error("Fetch Servers Error:", error);
     res.status(500).json({ error: "Failed to fetch server list" });
@@ -325,7 +388,7 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 3. FETCH SINGLE SERVER DETAILS (Math-Free V1)
+// 3. FETCH SINGLE SERVER DETAILS
 // ==========================================
 interface serverparams {
   id: string;
@@ -359,13 +422,20 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
 
 router.get("/:id", async (req: Request<serverparams>, res: Response) => {
   try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
     const server = await prisma.server.findUnique({
       where: { id: req.params.id },
       include: {
         owner: { select: { username: true, avatar: true } },
+        _count: {
+          select: {
+            votes: { where: { createdAt: { gte: sevenDaysAgo } } } // 👑 INCLUDED VOTE COUNT HERE
+          }
+        },
         challenges: {
-          orderBy: { postedAt: "desc" }, // EXACT FIX: Using your custom postedAt column
-          take: 10, // Only fetch the last 10 challenges so the page loads instantly
+          orderBy: { postedAt: "desc" },
+          take: 10, 
         },
       },
     });
@@ -375,8 +445,6 @@ router.get("/:id", async (req: Request<serverparams>, res: Response) => {
       return;
     }
 
-    // V1 Reality: We just return the raw server data. No decay math.
-    // The frontend only cares about 'lastChallengeAt' to show when they were last active.
     res.json(server);
   } catch (error) {
     console.error("Single Server Fetch Error:", error);
@@ -618,4 +686,122 @@ router.patch("/:id/reminder", async (req, res) => {
   }
 });
 
- export default router;
+// 👑 GET /api/servers/:id/vote-status — Check if user has voted
+router.get('/:id/vote-status', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const serverId = req.params.id as string;
+    const userId = req.userId as string;
+
+    const existingVote = await prisma.vote.findUnique({
+      where: {
+        serverId_userId: {
+          serverId: serverId,
+          userId: userId
+        }
+      }
+    });
+
+    res.json({ hasVoted: !!existingVote });
+  } catch (error) {
+    console.error("Status Check Error:", error);
+    res.json({ hasVoted: false }); // Failsafe
+  }
+});
+
+// 👑 POST /api/servers/:id/vote — Cast a vote
+router.post('/:id/vote', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const serverId = req.params.id as string;
+    const userId = req.userId as string;
+
+    if(!serverId||!userId){
+      res.status(400).json({error:'Missing serverId or userId'});
+      return;
+    }
+
+    // Check if they already voted
+    const existing = await prisma.vote.findUnique({
+      where: { serverId_userId: { serverId, userId } }
+    });
+
+    if (existing) {
+      res.status(409).json({ error: 'You already voted for this server.' });
+      return;
+    }
+
+    // Create the vote
+    await prisma.vote.create({
+      data: { serverId, userId }
+    });
+
+    // 👑 Return the new WEEKLY total count
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const voteCount = await prisma.vote.count({ 
+      where: { 
+        serverId: serverId,
+        createdAt: { gte: sevenDaysAgo }
+      } 
+    });
+    
+    res.json({ success: true, voteCount });
+  } catch (error) {
+    console.error("Vote Error:", error);
+    res.status(500).json({ error: 'Failed to cast vote' });
+  }
+});
+
+// 👑 GET /api/servers/:id/votes — Get current WEEKLY vote count
+router.get('/:id/votes', async (req: Request, res: Response) => {
+  try {
+    const serverId = req.params.id as string;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const count = await prisma.vote.count({ 
+      where: { 
+        serverId: serverId,
+        createdAt: { gte: sevenDaysAgo }
+      } 
+    });
+    res.json({ voteCount: count });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch votes' });
+  }
+});
+
+// 👑 DELETE /api/servers/:id/vote — Remove a vote
+router.delete('/:id/vote', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const serverId = req.params.id as string;
+    const userId = req.userId as string;
+
+    if (!serverId || !userId) {
+      res.status(400).json({ error: 'Missing serverId or userId' });
+      return;
+    }
+
+    // Delete the vote using the unique composite key
+    await prisma.vote.delete({
+      where: { 
+        serverId_userId: { 
+          serverId: serverId, 
+          userId: userId 
+        } 
+      }
+    });
+
+    // 👑 Return the updated WEEKLY total count
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const voteCount = await prisma.vote.count({ 
+      where: { 
+        serverId: serverId,
+        createdAt: { gte: sevenDaysAgo }
+      } 
+    });
+
+    res.json({ success: true, voteCount });
+  } catch (error) {
+    console.error("Unvote Error:", error);
+    res.status(500).json({ error: 'Failed to remove vote' });
+  }
+});
+
+export default router;
