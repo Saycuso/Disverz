@@ -5,6 +5,7 @@ import { registerMessageCreate } from "./listeners/messageCreate.js";
 import * as bumpCommand from "./commands/challenge.js"; // 👑 UPDATED IMPORT ALIAS
 import * as remindersCommand from "../bot/commands/reminder.js"
 import { startReminderEngine } from "./listeners/reminderEngine.js";
+import { registerGuildUpdate } from "./listeners/guildUpdate.js";
 
 const client = new Client({
   intents: [
@@ -35,6 +36,7 @@ client.once(Events.ClientReady, async () => {
   // 2. Start the core engines
   registerGuildMemberAdd(client);
   registerMessageCreate(client); // This now only tracks the 5-min heartbeat
+  registerGuildUpdate(client);
   startDormancyCheck(); // The garbage collector that hides dead servers
   startReminderEngine(client);
 });
