@@ -43,6 +43,28 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     // 👑 2. The Auto-Invite Generator
+    // 🛡️ SECURITY GATE: Verify the channel actually belongs to this Discord Server
+    try {
+      const channelCheckRes = await fetch(
+        `https://discord.com/api/v10/channels/${welcomeChannelId}`,
+        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+      );
+      
+      if (channelCheckRes.ok) {
+        const channelData = await channelCheckRes.json();
+        if (channelData.guild_id !== discordId) {
+          res.status(400).json({ error: "Security Alert: Channel does not belong to this server." });
+          return;
+        }
+      } else {
+        res.status(400).json({ error: "Invalid channel ID or bot lacks access." });
+        return;
+      }
+    } catch (error) {
+      console.error("Channel verification failed:", error);
+      res.status(500).json({ error: "Failed to verify channel ownership." });
+      return;
+    }
     let finalInviteLink = "https://discord.gg/pending"; // Fallback just in case
     let initialMemberCount = 0; // We start at 0, but we'll fetch the real number instantly
 
@@ -160,6 +182,23 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
       welcomeChannelId !== existingServer.welcomeChannelId || 
       finalInviteLink === "https://discord.gg/pending"
     ) {
+      // 🛡️ SECURITY GATE: Verify channel ownership before updating
+      try {
+        const channelCheckRes = await fetch(
+          `https://discord.com/api/v10/channels/${welcomeChannelId}`,
+          { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+        );
+        
+        if (channelCheckRes.ok) {
+          const channelData = await channelCheckRes.json();
+          if (channelData.guild_id !== existingServer.discordId) {
+            res.status(400).json({ error: "Security Alert: Channel does not belong to this server." });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Channel verification failed during update:", error);
+      }
       try {
         const discordRes = await fetch(
           `https://discord.com/api/v10/channels/${welcomeChannelId}/invites`,
