@@ -276,7 +276,7 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = parseInt(req.query.limit as string) || 50;
     const category = req.query.category as string | undefined;
     const search = req.query.search as string | undefined;
     const sort = (req.query.sort as string) || "active"; // Default to V1 Active feed
