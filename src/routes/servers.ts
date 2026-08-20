@@ -134,7 +134,7 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
         memberCount: initialMemberCount,
         lastChallengeAt: new Date(),
         isClaimed: true,
-        isPublicIndex: false,
+
       },
     });
 
