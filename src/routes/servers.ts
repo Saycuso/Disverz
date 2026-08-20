@@ -47,17 +47,23 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
     try {
       const channelCheckRes = await fetch(
         `https://discord.com/api/v10/channels/${welcomeChannelId}`,
-        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } },
       );
-      
+
       if (channelCheckRes.ok) {
         const channelData = await channelCheckRes.json();
         if (channelData.guild_id !== discordId) {
-          res.status(400).json({ error: "Security Alert: Channel does not belong to this server." });
+          res
+            .status(400)
+            .json({
+              error: "Security Alert: Channel does not belong to this server.",
+            });
           return;
         }
       } else {
-        res.status(400).json({ error: "Invalid channel ID or bot lacks access." });
+        res
+          .status(400)
+          .json({ error: "Invalid channel ID or bot lacks access." });
         return;
       }
     } catch (error) {
@@ -100,8 +106,8 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
       const guildRes = await fetch(
         `https://discord.com/api/v10/guilds/${discordId}?with_counts=true`,
         {
-          headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` }
-        }
+          headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+        },
       );
       if (guildRes.ok) {
         const guildData = await guildRes.json();
@@ -125,8 +131,8 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
         challengeChannelId,
         bumpReminders,
         ownerId: req.userId as string,
-        memberCount: initialMemberCount, 
-        lastChallengeAt: new Date()
+        memberCount: initialMemberCount,
+        lastChallengeAt: new Date(),
       },
     });
 
@@ -150,9 +156,8 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
       language,
       welcomeChannelId,
       challengeChannelId,
-      bumpReminders
+      bumpReminders,
     } = req.body;
-    
 
     // 1. Verify the server exists AND the requester is the owner
     const existingServer = await prisma.server.findUnique({
@@ -178,21 +183,28 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
     let currentIcon = existingServer.iconUrl;
 
     if (
-      welcomeChannelId &&
-      welcomeChannelId !== existingServer.welcomeChannelId || 
+      (welcomeChannelId &&
+        welcomeChannelId !== existingServer.welcomeChannelId) ||
       finalInviteLink === "https://discord.gg/pending"
     ) {
       // 🛡️ SECURITY GATE: Verify channel ownership before updating
       try {
         const channelCheckRes = await fetch(
           `https://discord.com/api/v10/channels/${welcomeChannelId}`,
-          { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+          {
+            headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+          },
         );
-        
+
         if (channelCheckRes.ok) {
           const channelData = await channelCheckRes.json();
           if (channelData.guild_id !== existingServer.discordId) {
-            res.status(400).json({ error: "Security Alert: Channel does not belong to this server." });
+            res
+              .status(400)
+              .json({
+                error:
+                  "Security Alert: Channel does not belong to this server.",
+              });
             return;
           }
         }
@@ -227,13 +239,14 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
     try {
       const guildRes = await fetch(
         `https://discord.com/api/v10/guilds/${serverId}?with_counts=true`,
-        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } },
       );
       if (guildRes.ok) {
         const guildData = await guildRes.json();
-        currentMemberCount = guildData.approximate_member_count || existingServer.memberCount;
+        currentMemberCount =
+          guildData.approximate_member_count || existingServer.memberCount;
         currentName = guildData.name || existingServer.name;
-        
+
         // Format the new icon URL if they changed it
         if (guildData.icon) {
           currentIcon = `https://cdn.discordapp.com/icons/${serverId}/${guildData.icon}.png`;
@@ -257,8 +270,8 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
         challengeChannelId,
         bumpReminders,
         memberCount: currentMemberCount, // Live members
-        name: currentName,           // Live name
-        iconUrl: currentIcon,        // Live icon
+        name: currentName, // Live name
+        iconUrl: currentIcon, // Live icon
         inviteLink: finalInviteLink,
       },
     });
@@ -279,7 +292,7 @@ router.get("/", async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 150;
     const category = req.query.category as string | undefined;
     const search = req.query.search as string | undefined;
-    const sort = (req.query.sort as string) || "active"; 
+    const sort = (req.query.sort as string) || "active";
 
     // 👑 NEW: Extract the directory flags from the frontend request
     const isClaimed = req.query.isClaimed as string | undefined;
@@ -298,9 +311,13 @@ router.get("/", async (req: Request, res: Response) => {
     if (isClaimed !== undefined) {
       baseWhere.isClaimed = isClaimed === "true";
     }
-    
+
     if (isPublicIndex !== undefined) {
+      // If the frontend asks for them (e.g., the PublicDirectoryFeed component)
       baseWhere.isPublicIndex = isPublicIndex === "true";
+    } else {
+      // 🛡️ THE FIX: If the frontend doesn't ask (e.g., the main Pulse Feed), explicitly hide them!
+      baseWhere.isPublicIndex = false;
     }
 
     // 👑 7-Day Rolling Window filter for queries
@@ -311,13 +328,13 @@ router.get("/", async (req: Request, res: Response) => {
       const [servers, total] = await Promise.all([
         prisma.server.findMany({
           where: baseWhere,
-          include: { 
+          include: {
             owner: { select: { username: true, avatar: true } },
-            _count: { 
-              select: { 
-                votes: { where: { createdAt: { gte: sevenDaysAgo } } } // 👑 Weekly count
-              } 
-            }
+            _count: {
+              select: {
+                votes: { where: { createdAt: { gte: sevenDaysAgo } } }, // 👑 Weekly count
+              },
+            },
           },
           orderBy: { lastChallengeAt: "desc" }, // Native DB chronological sort
           skip: (page - 1) * limit,
@@ -344,13 +361,13 @@ router.get("/", async (req: Request, res: Response) => {
       // Fetch all active servers with their weekly votes
       const allServers = await prisma.server.findMany({
         where: baseWhere,
-        include: { 
+        include: {
           owner: { select: { username: true, avatar: true } },
-          _count: { 
-            select: { 
-              votes: { where: { createdAt: { gte: sevenDaysAgo } } } 
-            } 
-          }
+          _count: {
+            select: {
+              votes: { where: { createdAt: { gte: sevenDaysAgo } } },
+            },
+          },
         },
       });
 
@@ -367,7 +384,7 @@ router.get("/", async (req: Request, res: Response) => {
         const timeB = b.lastChallengeAt ? b.lastChallengeAt.getTime() : 0;
         return timeB - timeA;
       });
-      
+
       const total = allServers.length;
       const startIndex = (page - 1) * limit;
       const paginated = allServers.slice(startIndex, startIndex + limit);
@@ -389,13 +406,13 @@ router.get("/", async (req: Request, res: Response) => {
     if (sort === "ranked") {
       const servers = await prisma.server.findMany({
         where: baseWhere,
-        include: { 
+        include: {
           owner: { select: { username: true, avatar: true } },
-          _count: { 
-            select: { 
-              votes: { where: { createdAt: { gte: sevenDaysAgo } } } 
-            } 
-          }
+          _count: {
+            select: {
+              votes: { where: { createdAt: { gte: sevenDaysAgo } } },
+            },
+          },
         },
       });
 
@@ -433,7 +450,9 @@ router.get("/", async (req: Request, res: Response) => {
 
     res
       .status(400)
-      .json({ error: 'Invalid sort parameter. Use "active", "voted", or "ranked".' });
+      .json({
+        error: 'Invalid sort parameter. Use "active", "voted", or "ranked".',
+      });
   } catch (error) {
     console.error("Fetch Servers Error:", error);
     res.status(500).json({ error: "Failed to fetch server list" });
@@ -453,15 +472,17 @@ interface serverparams {
 router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     // 1. Fetch the user to get their Discord ID
-    const user = await prisma.user.findUnique({ where: { id: req.userId as string } });
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId as string },
+    });
 
     // 2. Find servers where they are the Owner OR a Manager
     const myServers = await prisma.server.findMany({
       where: {
         OR: [
           { ownerId: req.userId as string },
-          { managerIds: { has: user?.discordId || "" } }
-        ]
+          { managerIds: { has: user?.discordId || "" } },
+        ],
       },
       orderBy: { createdAt: "desc" }, // Newest first
     });
@@ -483,12 +504,12 @@ router.get("/:id", async (req: Request<serverparams>, res: Response) => {
         owner: { select: { username: true, avatar: true } },
         _count: {
           select: {
-            votes: { where: { createdAt: { gte: sevenDaysAgo } } } // 👑 INCLUDED VOTE COUNT HERE
-          }
+            votes: { where: { createdAt: { gte: sevenDaysAgo } } }, // 👑 INCLUDED VOTE COUNT HERE
+          },
         },
         challenges: {
           orderBy: { postedAt: "desc" },
-          take: 10, 
+          take: 10,
         },
       },
     });
@@ -598,12 +619,16 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     // 3. THIRD: Fetch user & verify permissions (Owner OR Manager)
-    const user = await prisma.user.findUnique({ where: { id: req.userId as string } });
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId as string },
+    });
     const isOwner = existingServer.ownerId === req.userId;
     const isManager = existingServer.managerIds.includes(user?.discordId || "");
 
     if (!isOwner && !isManager) {
-      res.status(403).json({ error: "You do not have permission to delete this server" });
+      res
+        .status(403)
+        .json({ error: "You do not have permission to delete this server" });
       return;
     }
 
@@ -612,7 +637,9 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
       where: { id: serverId },
     });
 
-    res.json({ message: "Server successfully removed from the Disverz pulse." });
+    res.json({
+      message: "Server successfully removed from the Disverz pulse.",
+    });
   } catch (error) {
     console.error("Delete Server Error:", error);
     res.status(500).json({ error: "Failed to delete server" });
@@ -622,104 +649,131 @@ router.delete("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
 // ==========================================
 // WEB BUMP: TURNSTILE VERIFY & EXECUTE BUMP
 // ==========================================
-router.post("/:id/web-bump", requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const serverId = req.params.id as string;
-    const { token } = req.body;
-    
-    if (!token) {
+router.post(
+  "/:id/web-bump",
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const serverId = req.params.id as string;
+      const { token } = req.body;
+
+      if (!token) {
         res.status(400).json({ error: "Missing Turnstile token." });
         return;
-    }
+      }
 
-    const server = await prisma.server.findUnique({ where: { id: serverId } });
-    if (!server) {
-      res.status(404).json({ error: "Server not found" });
-      return;
-    }
-
-    // Cooldown Strategy (2 Hours)
-    const COOLDOWN_HOURS = 2;
-    if (server.lastChallengeAt) {
-      const hoursSinceLast = (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceLast < COOLDOWN_HOURS) {
-        const minutesLeft = Math.ceil((COOLDOWN_HOURS - hoursSinceLast) * 60);
-        res.status(429).json({ error: `Cooldown. Next bump in ${minutesLeft} minutes.` });
+      const server = await prisma.server.findUnique({
+        where: { id: serverId },
+      });
+      if (!server) {
+        res.status(404).json({ error: "Server not found" });
         return;
       }
-    }
 
-    // Verify Token with Cloudflare
-    const formData = new URLSearchParams();
-    formData.append('secret', process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY as string);
-    formData.append('response', token);
-
-    const cloudflareRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-        method: 'POST',
-        body: formData
-    });
-    const cloudflareData = await cloudflareRes.json();
-
-    if (!cloudflareData.success) {
-        res.status(400).json({ error: "Human verification failed. Please try again." });
-        return;
-    }
-
-    // Success! Execute the bump
-    await prisma.server.update({
-      where: { id: server.id },
-      data: {
-        lastChallengeAt: new Date(),
-        isDormant: false,
-        reminderSent: false,
+      // Cooldown Strategy (2 Hours)
+      const COOLDOWN_HOURS = 2;
+      if (server.lastChallengeAt) {
+        const hoursSinceLast =
+          (Date.now() - server.lastChallengeAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceLast < COOLDOWN_HOURS) {
+          const minutesLeft = Math.ceil((COOLDOWN_HOURS - hoursSinceLast) * 60);
+          res
+            .status(429)
+            .json({ error: `Cooldown. Next bump in ${minutesLeft} minutes.` });
+          return;
+        }
       }
-    });
 
-    res.json({ message: "Server successfully bumped to the top of the active feed!" });
-  } catch (error) {
-    console.error("Web Bump Error:", error);
-    res.status(500).json({ error: "Failed to bump server" });
-  }
-});
+      // Verify Token with Cloudflare
+      const formData = new URLSearchParams();
+      formData.append(
+        "secret",
+        process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY as string,
+      );
+      formData.append("response", token);
+
+      const cloudflareRes = await fetch(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const cloudflareData = await cloudflareRes.json();
+
+      if (!cloudflareData.success) {
+        res
+          .status(400)
+          .json({ error: "Human verification failed. Please try again." });
+        return;
+      }
+
+      // Success! Execute the bump
+      await prisma.server.update({
+        where: { id: server.id },
+        data: {
+          lastChallengeAt: new Date(),
+          isDormant: false,
+          reminderSent: false,
+        },
+      });
+
+      res.json({
+        message: "Server successfully bumped to the top of the active feed!",
+      });
+    } catch (error) {
+      console.error("Web Bump Error:", error);
+      res.status(500).json({ error: "Failed to bump server" });
+    }
+  },
+);
 
 // ==========================================
 // ADD CO-MANAGER
 // ==========================================
-router.post("/:id/managers", requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { discordId } = req.body; 
-    
-    const server = await prisma.server.findUnique({ where: { id: req.params.id as string} });
-    
-    if (!server) {
-      res.status(404).json({ error: "Server not found" });
-      return;
-    }
+router.post(
+  "/:id/managers",
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { discordId } = req.body;
 
-    // Only the true original owner can add new managers
-    if (server.ownerId !== req.userId) {
-      res.status(403).json({ error: "Only the server owner can add managers" });
-      return;
-    }
+      const server = await prisma.server.findUnique({
+        where: { id: req.params.id as string },
+      });
 
-    if (server.managerIds.includes(discordId)) {
-      res.status(409).json({ error: "This user is already a manager" });
-      return;
-    }
-
-    const updated = await prisma.server.update({
-      where: { id: req.params.id as string },
-      data: {
-        managerIds: { push: discordId }
+      if (!server) {
+        res.status(404).json({ error: "Server not found" });
+        return;
       }
-    });
 
-    res.json({ message: "Manager added successfully!", server: updated });
-  } catch (error) {
-    console.error("Add Manager Error:", error);
-    res.status(500).json({ error: "Failed to add manager" });
-  }
-});
+      // Only the true original owner can add new managers
+      if (server.ownerId !== req.userId) {
+        res
+          .status(403)
+          .json({ error: "Only the server owner can add managers" });
+        return;
+      }
+
+      if (server.managerIds.includes(discordId)) {
+        res.status(409).json({ error: "This user is already a manager" });
+        return;
+      }
+
+      const updated = await prisma.server.update({
+        where: { id: req.params.id as string },
+        data: {
+          managerIds: { push: discordId },
+        },
+      });
+
+      res.json({ message: "Manager added successfully!", server: updated });
+    } catch (error) {
+      console.error("Add Manager Error:", error);
+      res.status(500).json({ error: "Failed to add manager" });
+    }
+  },
+);
 
 // 👑 BUMP REMINDER TOGGLE ENDPOINT
 router.patch("/:id/reminder", async (req, res) => {
@@ -735,127 +789,140 @@ router.patch("/:id/reminder", async (req, res) => {
     return res.status(200).json(updatedServer);
   } catch (error) {
     console.error("Error updating bump reminder:", error);
-    return res.status(500).json({ error: "Failed to update reminder settings" });
+    return res
+      .status(500)
+      .json({ error: "Failed to update reminder settings" });
   }
 });
 
 // 👑 GET /api/servers/:id/vote-status — Check if user has voted
-router.get('/:id/vote-status', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const serverId = req.params.id as string;
-    const userId = req.userId as string;
+router.get(
+  "/:id/vote-status",
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const serverId = req.params.id as string;
+      const userId = req.userId as string;
 
-    const existingVote = await prisma.vote.findUnique({
-      where: {
-        serverId_userId: {
-          serverId: serverId,
-          userId: userId
-        }
-      }
-    });
+      const existingVote = await prisma.vote.findUnique({
+        where: {
+          serverId_userId: {
+            serverId: serverId,
+            userId: userId,
+          },
+        },
+      });
 
-    res.json({ hasVoted: !!existingVote });
-  } catch (error) {
-    console.error("Status Check Error:", error);
-    res.json({ hasVoted: false }); // Failsafe
-  }
-});
+      res.json({ hasVoted: !!existingVote });
+    } catch (error) {
+      console.error("Status Check Error:", error);
+      res.json({ hasVoted: false }); // Failsafe
+    }
+  },
+);
 
 // 👑 POST /api/servers/:id/vote — Cast a vote
-router.post('/:id/vote', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const serverId = req.params.id as string;
-    const userId = req.userId as string;
+router.post(
+  "/:id/vote",
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const serverId = req.params.id as string;
+      const userId = req.userId as string;
 
-    if(!serverId||!userId){
-      res.status(400).json({error:'Missing serverId or userId'});
-      return;
+      if (!serverId || !userId) {
+        res.status(400).json({ error: "Missing serverId or userId" });
+        return;
+      }
+
+      // Check if they already voted
+      const existing = await prisma.vote.findUnique({
+        where: { serverId_userId: { serverId, userId } },
+      });
+
+      if (existing) {
+        res.status(409).json({ error: "You already voted for this server." });
+        return;
+      }
+
+      // Create the vote
+      await prisma.vote.create({
+        data: { serverId, userId },
+      });
+
+      // 👑 Return the new WEEKLY total count
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const voteCount = await prisma.vote.count({
+        where: {
+          serverId: serverId,
+          createdAt: { gte: sevenDaysAgo },
+        },
+      });
+
+      res.json({ success: true, voteCount });
+    } catch (error) {
+      console.error("Vote Error:", error);
+      res.status(500).json({ error: "Failed to cast vote" });
     }
-
-    // Check if they already voted
-    const existing = await prisma.vote.findUnique({
-      where: { serverId_userId: { serverId, userId } }
-    });
-
-    if (existing) {
-      res.status(409).json({ error: 'You already voted for this server.' });
-      return;
-    }
-
-    // Create the vote
-    await prisma.vote.create({
-      data: { serverId, userId }
-    });
-
-    // 👑 Return the new WEEKLY total count
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const voteCount = await prisma.vote.count({ 
-      where: { 
-        serverId: serverId,
-        createdAt: { gte: sevenDaysAgo }
-      } 
-    });
-    
-    res.json({ success: true, voteCount });
-  } catch (error) {
-    console.error("Vote Error:", error);
-    res.status(500).json({ error: 'Failed to cast vote' });
-  }
-});
+  },
+);
 
 // 👑 GET /api/servers/:id/votes — Get current WEEKLY vote count
-router.get('/:id/votes', async (req: Request, res: Response) => {
+router.get("/:id/votes", async (req: Request, res: Response) => {
   try {
     const serverId = req.params.id as string;
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const count = await prisma.vote.count({ 
-      where: { 
+    const count = await prisma.vote.count({
+      where: {
         serverId: serverId,
-        createdAt: { gte: sevenDaysAgo }
-      } 
+        createdAt: { gte: sevenDaysAgo },
+      },
     });
     res.json({ voteCount: count });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch votes' });
+    res.status(500).json({ error: "Failed to fetch votes" });
   }
 });
 
 // 👑 DELETE /api/servers/:id/vote — Remove a vote
-router.delete('/:id/vote', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const serverId = req.params.id as string;
-    const userId = req.userId as string;
+router.delete(
+  "/:id/vote",
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const serverId = req.params.id as string;
+      const userId = req.userId as string;
 
-    if (!serverId || !userId) {
-      res.status(400).json({ error: 'Missing serverId or userId' });
-      return;
-    }
-
-    // Delete the vote using the unique composite key
-    await prisma.vote.delete({
-      where: { 
-        serverId_userId: { 
-          serverId: serverId, 
-          userId: userId 
-        } 
+      if (!serverId || !userId) {
+        res.status(400).json({ error: "Missing serverId or userId" });
+        return;
       }
-    });
 
-    // 👑 Return the updated WEEKLY total count
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const voteCount = await prisma.vote.count({ 
-      where: { 
-        serverId: serverId,
-        createdAt: { gte: sevenDaysAgo }
-      } 
-    });
+      // Delete the vote using the unique composite key
+      await prisma.vote.delete({
+        where: {
+          serverId_userId: {
+            serverId: serverId,
+            userId: userId,
+          },
+        },
+      });
 
-    res.json({ success: true, voteCount });
-  } catch (error) {
-    console.error("Unvote Error:", error);
-    res.status(500).json({ error: 'Failed to remove vote' });
-  }
-});
+      // 👑 Return the updated WEEKLY total count
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const voteCount = await prisma.vote.count({
+        where: {
+          serverId: serverId,
+          createdAt: { gte: sevenDaysAgo },
+        },
+      });
 
+      res.json({ success: true, voteCount });
+    } catch (error) {
+      console.error("Unvote Error:", error);
+      res.status(500).json({ error: "Failed to remove vote" });
+    }
+  },
+);
 
 export default router;
