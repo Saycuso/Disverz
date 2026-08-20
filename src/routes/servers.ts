@@ -279,15 +279,29 @@ router.get("/", async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 150;
     const category = req.query.category as string | undefined;
     const search = req.query.search as string | undefined;
-    const sort = (req.query.sort as string) || "active"; // Default to V1 Active feed
+    const sort = (req.query.sort as string) || "active"; 
 
-    const baseWhere = {
+    // 👑 NEW: Extract the directory flags from the frontend request
+    const isClaimed = req.query.isClaimed as string | undefined;
+    const isPublicIndex = req.query.isPublicIndex as string | undefined;
+
+    // Build the base Prisma query
+    const baseWhere: any = {
       isDormant: false,
       ...(category && { category }),
       ...(search && {
         name: { contains: search, mode: "insensitive" as const },
       }),
     };
+
+    // 👑 NEW: Inject the booleans into Prisma if the frontend asked for them
+    if (isClaimed !== undefined) {
+      baseWhere.isClaimed = isClaimed === "true";
+    }
+    
+    if (isPublicIndex !== undefined) {
+      baseWhere.isPublicIndex = isPublicIndex === "true";
+    }
 
     // 👑 7-Day Rolling Window filter for queries
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -842,5 +856,6 @@ router.delete('/:id/vote', requireAuth, async (req: AuthRequest, res: Response) 
     res.status(500).json({ error: 'Failed to remove vote' });
   }
 });
+
 
 export default router;
