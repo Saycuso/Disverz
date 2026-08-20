@@ -133,6 +133,8 @@ router.post("/", requireAuth, async (req: AuthRequest, res: Response) => {
         ownerId: req.userId as string,
         memberCount: initialMemberCount,
         lastChallengeAt: new Date(),
+        isClaimed: true,
+        isPublicIndex: false,
       },
     });
 
