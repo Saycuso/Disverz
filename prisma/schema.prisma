@@ -56,6 +56,9 @@ model Server {
   joinClicks      JoinClick[]
   votes           Vote[]
 
+  isPublicIndex Boolean @default(false)
+  isClaimed     Boolean @default(false)
+
   @@index([isDormant, lastChallengeAt])
 }
 
