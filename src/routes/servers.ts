@@ -797,7 +797,11 @@ router.patch("/:id/reminder", async (req, res) => {
   }
 });
 
-// 👑 GET /api/servers/:id/vote-status — Check if user has voted
+// ==========================================
+// 👑 24-HOUR VOTING SYSTEM (NEW LOGIC)
+// ==========================================
+
+// Check if user has voted in the last 24 hours
 router.get(
   "/:id/vote-status",
   requireAuth,
@@ -815,15 +819,23 @@ router.get(
         },
       });
 
-      res.json({ hasVoted: !!existingVote });
+      let hasVoted = false;
+      if (existingVote) {
+        const hoursSinceVote = (Date.now() - existingVote.createdAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceVote < 24) {
+          hasVoted = true;
+        }
+      }
+
+      res.json({ hasVoted });
     } catch (error) {
       console.error("Status Check Error:", error);
-      res.json({ hasVoted: false }); // Failsafe
+      res.json({ hasVoted: false }); 
     }
   },
 );
 
-// 👑 POST /api/servers/:id/vote — Cast a vote
+// Cast or Refresh a vote (24-Hour Cooldown)
 router.post(
   "/:id/vote",
   requireAuth,
@@ -837,27 +849,38 @@ router.post(
         return;
       }
 
-      // Check if they already voted
-      const existing = await prisma.vote.findUnique({
+      const existingVote = await prisma.vote.findUnique({
         where: { serverId_userId: { serverId, userId } },
       });
 
-      if (existing) {
-        res.status(409).json({ error: "You already voted for this server." });
-        return;
+      if (existingVote) {
+        // Calculate hours since their last vote
+        const hoursSinceVote = (Date.now() - existingVote.createdAt.getTime()) / (1000 * 60 * 60);
+        
+        if (hoursSinceVote < 24) {
+          res.status(429).json({ error: "You can only vote for this server once every 24 hours." });
+          return;
+        }
+
+        // 👑 THE TRICK: Update the timestamp instead of crashing the unique constraint
+        await prisma.vote.update({
+          where: { serverId_userId: { serverId, userId } },
+          data: { createdAt: new Date() }
+        });
+
+      } else {
+        // First time voting
+        await prisma.vote.create({
+          data: { serverId, userId },
+        });
       }
 
-      // Create the vote
-      await prisma.vote.create({
-        data: { serverId, userId },
-      });
-
-      // 👑 Return the new WEEKLY total count
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      // Return the new 24-HOUR total count
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const voteCount = await prisma.vote.count({
         where: {
           serverId: serverId,
-          createdAt: { gte: sevenDaysAgo },
+          createdAt: { gte: oneDayAgo },
         },
       });
 
@@ -869,15 +892,15 @@ router.post(
   },
 );
 
-// 👑 GET /api/servers/:id/votes — Get current WEEKLY vote count
+// Get current 24-HOUR vote count
 router.get("/:id/votes", async (req: Request, res: Response) => {
   try {
     const serverId = req.params.id as string;
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const count = await prisma.vote.count({
       where: {
         serverId: serverId,
-        createdAt: { gte: sevenDaysAgo },
+        createdAt: { gte: oneDayAgo },
       },
     });
     res.json({ voteCount: count });
@@ -885,46 +908,5 @@ router.get("/:id/votes", async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to fetch votes" });
   }
 });
-
-// 👑 DELETE /api/servers/:id/vote — Remove a vote
-router.delete(
-  "/:id/vote",
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const serverId = req.params.id as string;
-      const userId = req.userId as string;
-
-      if (!serverId || !userId) {
-        res.status(400).json({ error: "Missing serverId or userId" });
-        return;
-      }
-
-      // Delete the vote using the unique composite key
-      await prisma.vote.delete({
-        where: {
-          serverId_userId: {
-            serverId: serverId,
-            userId: userId,
-          },
-        },
-      });
-
-      // 👑 Return the updated WEEKLY total count
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const voteCount = await prisma.vote.count({
-        where: {
-          serverId: serverId,
-          createdAt: { gte: sevenDaysAgo },
-        },
-      });
-
-      res.json({ success: true, voteCount });
-    } catch (error) {
-      console.error("Unvote Error:", error);
-      res.status(500).json({ error: "Failed to remove vote" });
-    }
-  },
-);
 
 export default router;
