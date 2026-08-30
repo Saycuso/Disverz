@@ -19,7 +19,7 @@ export const startReminderEngine = (client: Client) => {
           OR: [
             { lastChallengeAt: { lt: bumpCooldown } },
             { lastChallengeAt: null }
-          ] // Replace 'updatedAt' with whatever field tracks their last bump/pulse!
+          ] 
         }
       });
 
@@ -47,8 +47,19 @@ export const startReminderEngine = (client: Client) => {
           });
 
           console.log(`✅ Sent bump reminder to ${server.name}`);
-        } catch (discordErr) {
-          console.error(`Failed to send reminder to ${server.name} (Bot might lack permissions):`, discordErr);
+        } catch (discordErr: any) {
+          // 👑 THE FIX: Catch the Missing Access Error and auto-disable
+          if (discordErr.code === 50001) {
+            console.log(`[REMINDER ENGINE] 🚫 Missing access in server: ${server.name}. Auto-disabling reminders.`);
+            
+            await prisma.server.update({
+              where: { id: server.id },
+              data: { bumpReminders: false } // Shut it off so we stop trying
+            });
+          } else {
+            // Log other random API errors normally but cleanly
+            console.error(`[REMINDER ENGINE] Failed to send to ${server.name} - Error ${discordErr.code || 'UNKNOWN'}: ${discordErr.message || 'Unknown Error'}`);
+          }
         }
       }
     } catch (error) {

@@ -323,7 +323,7 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     // 👑 7-Day Rolling Window filter for queries
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     // --- ACTIVE TAB: Chronological Bump ---
     if (sort === "active") {
@@ -334,7 +334,7 @@ router.get("/", async (req: Request, res: Response) => {
             owner: { select: { username: true, avatar: true } },
             _count: {
               select: {
-                votes: { where: { createdAt: { gte: sevenDaysAgo } } }, // 👑 Weekly count
+                votes: { where: { createdAt: { gte: oneDayAgo } } }, // 👑 Weekly count
               },
             },
           },
@@ -367,7 +367,7 @@ router.get("/", async (req: Request, res: Response) => {
           owner: { select: { username: true, avatar: true } },
           _count: {
             select: {
-              votes: { where: { createdAt: { gte: sevenDaysAgo } } },
+              votes: { where: { createdAt: { gte: oneDayAgo } } },
             },
           },
         },
@@ -412,7 +412,7 @@ router.get("/", async (req: Request, res: Response) => {
           owner: { select: { username: true, avatar: true } },
           _count: {
             select: {
-              votes: { where: { createdAt: { gte: sevenDaysAgo } } },
+              votes: { where: { createdAt: { gte: oneDayAgo } } },
             },
           },
         },
@@ -498,7 +498,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
 
 router.get("/:id", async (req: Request<serverparams>, res: Response) => {
   try {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const server = await prisma.server.findUnique({
       where: { id: req.params.id },
@@ -506,7 +506,7 @@ router.get("/:id", async (req: Request<serverparams>, res: Response) => {
         owner: { select: { username: true, avatar: true } },
         _count: {
           select: {
-            votes: { where: { createdAt: { gte: sevenDaysAgo } } }, // 👑 INCLUDED VOTE COUNT HERE
+            votes: { where: { createdAt: { gte: oneDayAgo } } }, // 👑 INCLUDED VOTE COUNT HERE
           },
         },
         challenges: {
