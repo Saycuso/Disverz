@@ -21,9 +21,22 @@ export function startDormancyCheck() {
       const result = await prisma.server.updateMany({
         where: {
           isDormant: false,
-          OR: [
-            { lastHumanMsgAt: { lt: cutoff } }, // Message is older than 30 seconds
-            { lastHumanMsgAt: null }            // Or they literally never spoke
+          // 👑 THE FIX: BOTH conditions must be true to kill the server
+          AND: [
+            // 1. No recent chat messages (or never chatted)
+            {
+              OR: [
+                { lastHumanMsgAt: { lt: cutoff } },
+                { lastHumanMsgAt: null }
+              ]
+            },
+            // 2. AND no recent website bumps (or never bumped)
+            {
+              OR: [
+                { lastChallengeAt: { lt: cutoff } },
+                { lastChallengeAt: null }
+              ]
+            }
           ]
         },
         data: {
