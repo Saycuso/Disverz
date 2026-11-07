@@ -21,6 +21,7 @@ export function startDormancyCheck() {
       const result = await prisma.server.updateMany({
         where: {
           isDormant: false,
+          isClaimed: true,
           // 👑 THE FIX: BOTH conditions must be true to kill the server
           AND: [
             // 1. No recent chat messages (or never chatted)
