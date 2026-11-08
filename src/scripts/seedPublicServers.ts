@@ -131,7 +131,6 @@ async function seedTargetedServers() {
         where: { discordId: guild.id },
         update: {
           memberCount,
-          isPublicIndex: true,
         },
         create: {
           discordId: guild.id,

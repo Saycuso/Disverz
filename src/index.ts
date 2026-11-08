@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.js'; // 1. IMPORT THE AUTH ROUTER
 import serverRoutes from './routes/servers.js'
 import cookieParser from 'cookie-parser';
 import { startBot } from './bot/bot.js';
+import { startPublicServerRefresh } from "./bot/publicServerRefresh.js";
 
 dotenv.config();
 
@@ -44,5 +45,6 @@ app.get('/', (req: Request, res: Response) => {
 app.listen(PORT, ()=> {
     console.log(`[SERVER] Disverz API running on the ${PORT}`)
     startBot();
+    startPublicServerRefresh();
 });
 
