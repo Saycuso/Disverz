@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import jwt from "jsonwebtoken"; // ADD THIS IMPORT
 import dotenv from "dotenv";
+import { randomBytes } from "node:crypto";
 import {
   requireAuth,
   type AuthRequest,
@@ -191,6 +192,12 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
     }
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
+   select: {
+    id: true,
+    discordId: true,
+    username: true,
+    avatar: true,
+   }, 
     });
 
     if (!user) {

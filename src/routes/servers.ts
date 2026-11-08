@@ -240,7 +240,7 @@ router.patch("/:id", requireAuth, async (req: AuthRequest, res: Response) => {
     // B. Stealth Sync: Update Name, Icon, and Member Count while we are here
     try {
       const guildRes = await fetch(
-        `https://discord.com/api/v10/guilds/${serverId}?with_counts=true`,
+        `https://discord.com/api/v10/guilds/${existingServer.discordId}?with_counts=true`,
         { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } },
       );
       if (guildRes.ok) {
@@ -568,7 +568,22 @@ router.get(
   requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
-      const guildId = req.params.id;
+      const guildId = req.params.id as string;
+
+      if (!req.userId) {
+        return res.status(401).json({ error: "Please log in" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { accessToken: true },
+      });
+
+      if(!user?.accessToken){
+        return res.status(401).json({
+          error: "Please sign in with Discord again",
+        })
+      }
 
       // Use the Bot Token to ask Discord for the channels
       const response = await fetch(
@@ -778,9 +793,9 @@ router.post(
 );
 
 // 👑 BUMP REMINDER TOGGLE ENDPOINT
-router.patch("/:id/reminder", async (req, res) => {
+router.patch("/:id/reminder", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const id  = req.params.id as string;
     const { bumpReminders } = req.body;
 
     const updatedServer = await prisma.server.update({
