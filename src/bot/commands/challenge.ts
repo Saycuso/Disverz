@@ -91,61 +91,110 @@ export async function execute(interaction: CommandInteraction) {
         time: 15 * 1000 
     }); 
 
-    collector.on('collect', async (btnInteraction) => { 
-        // --- ANTI-ABUSE SHIELD --- 
-        const responseTimeMs = Date.now() - startTime; 
-        if (responseTimeMs < 800) { // 800ms human reaction threshold
-            await btnInteraction.reply({ content: `⚡ **BEEP BOOP.** You clicked faster than humanly possible. Script detected. Bump burned.`, ephemeral: true }); 
-            collector.stop('busted'); 
-            return; 
-        } 
+    collector.on('collect', async (btnInteraction) => {
+    // Stop accepting clicks before any asynchronous work starts.
+    collector.stop('submitted');
 
-        const accountAgeMs = Date.now() - btnInteraction.user.createdTimestamp; 
-        if (accountAgeMs < (7 * 24 * 60 * 60 * 1000)) { 
-            await btnInteraction.reply({ content: `🛑 **ACCESS DENIED.** Only veteran Discord accounts (7+ days old) can secure the bump.`, ephemeral: true }); 
-            collector.stop('busted');
-            return; 
-        } 
+    const responseTimeMs = Date.now() - startTime;
+    let bumpSaved = false;
 
-        // --- WIN / LOSE CONDITIONS --- 
-        if (btnInteraction.customId === correctId) {
-            // They clicked the right button! Update Neon DB.
-            await prisma.server.update({ 
-                where: { id: server.id }, 
-                data: { 
-                    lastChallengeAt: new Date(), 
-                    lastHumanMsgAt: new Date(), 
-                    isDormant: false, 
-                    reminderSent: false // Resets the alarm clock!
-                } 
-            }); 
+    try {
+        // Acknowledge the click before waiting for the database.
+        await btnInteraction.deferUpdate();
 
-            // Edit their ephemeral message to show success and remove buttons
-            await btnInteraction.update({
-                content: `🔥 **VICTORY!** You correctly clicked ${correctTarget.emoji} in ${(responseTimeMs / 1000).toFixed(1)}s!`,
+        if (responseTimeMs < 800) {
+            await btnInteraction.editReply({
+                content: '⚡ You clicked too quickly. Please try again.',
                 components: []
             });
-
-            // Send a public hype message to the channel
-            await channel.send(`🚀 **${btnInteraction.user.username}** just proved they are human and bumped this server to the top of Disverz!`);
-            collector.stop('answered');
-        } else {
-            // They clicked the wrong button
-            await btnInteraction.update({
-                content: `❌ **INCORRECT!** You clicked the wrong emoji. Bump failed.`,
-                components: []
-            });
-            collector.stop('failed');
+            return;
         }
-    }); 
 
-    collector.on('end', async (_, reason) => { 
-        if (reason === 'time') { 
-            // If they took longer than 15 seconds, edit the ephemeral message
-            await interaction.editReply({ 
-                content: '⏰ The human check has expired. You took too long to click!',
+        const accountAgeMs =
+            Date.now() - btnInteraction.user.createdTimestamp;
+
+        if (accountAgeMs < 7 * 24 * 60 * 60 * 1000) {
+            await btnInteraction.editReply({
+                content: '🛑 Your Discord account must be at least 7 days old.',
                 components: []
-            }); 
-        } 
-    }); 
+            });
+            return;
+        }
+
+        if (btnInteraction.customId !== correctId) {
+            await btnInteraction.editReply({
+                content: '❌ **INCORRECT!** You clicked the wrong emoji. Bump failed.',
+                components: []
+            });
+            return;
+        }
+
+        await prisma.server.update({
+            where: { id: server.id },
+            data: {
+                lastChallengeAt: new Date(),
+                lastHumanMsgAt: new Date(),
+                isDormant: false,
+                reminderSent: false
+            }
+        });
+
+        bumpSaved = true;
+
+        await btnInteraction.editReply({
+            content: `🔥 **VICTORY!** You correctly clicked ${correctTarget.emoji} in ${(responseTimeMs / 1000).toFixed(1)}s!`,
+            components: []
+        });
+
+        // The bump is already saved. An announcement failure
+        // must not turn it into a failed bump or crash the backend.
+        try {
+            await channel.send({
+                content: `🚀 **${btnInteraction.user.username}** just proved they are human and bumped this server to the top of Disverz!`,
+                allowedMentions: { parse: [] }
+            });
+        } catch (error) {
+            console.error(
+                `[BUMP] Bump saved, but announcement failed in channel ${channel.id}:`,
+                error
+            );
+        }
+    } catch (error) {
+        console.error(
+            `[BUMP] Challenge handler failed for guild ${guildId}:`,
+            error
+        );
+
+        // Sending the error response can also fail, so handle that too.
+        try {
+            await interaction.editReply({
+                content: bumpSaved
+                    ? '✅ Your bump was saved, but the confirmation could not be completed.'
+                    : '❌ The bump could not be confirmed. Please try again shortly.',
+                components: []
+            });
+        } catch (replyError) {
+            console.error(
+                '[BUMP] Could not update the challenge message:',
+                replyError
+            );
+        }
+    }
+});
+
+collector.on('end', async (_, reason) => {
+    if (reason !== 'time') return;
+
+    try {
+        await interaction.editReply({
+            content: '⏰ The human check has expired. You took too long to click!',
+            components: []
+        });
+    } catch (error) {
+        console.error(
+            `[BUMP] Could not update expired challenge for guild ${guildId}:`,
+            error
+        );
+    }
+});
 }
