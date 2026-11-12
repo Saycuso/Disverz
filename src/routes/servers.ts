@@ -4,6 +4,7 @@ import {
   type AuthRequest,
 } from "../middlewares/authMiddleware.js";
 import { prisma } from "../lib/prisma.js";
+import {connectionRecovery} from "../bot/bot.js";
 
 const router = Router();
 
@@ -531,36 +532,132 @@ router.get("/:id", async (req: Request<serverparams>, res: Response) => {
 // ==========================================
 // 4. JOIN SERVER (Conversion Tracking)
 // ==========================================
-router.get("/:id/join", async (req: Request<serverparams>, res: Response) => {
-  try {
-    const server = await prisma.server.findUnique({
-      where: { id: req.params.id },
-    });
+router.get(
+  "/:id/join",
+  async (
+    req: Request<serverparams>,
+    res: Response,
+  ) => {
+    try {
+      const server = await prisma.server.findUnique({
+        where: {
+          id: req.params.id,
+        },
+      });
 
-    if (!server) {
-      res.status(404).json({ error: "Server not found" });
-      return;
+      if (!server) {
+        res.status(404).json({
+          error: "Server not found",
+        });
+        return;
+      }
+
+      // Prevent browsers/CDNs from caching an old invite.
+      res.setHeader("Cache-Control", "no-store");
+
+      const connection = await connectionRecovery.ensure(
+        server.id,
+      );
+
+      if (!connection.inviteLink) {
+        res.setHeader("Retry-After", "60");
+        res.setHeader("X-Robots-Tag", "noindex");
+
+        res.status(503).format({
+          html: () =>
+            res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invite temporarily unavailable · Disverz</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0a0a0a;
+      color: #fff;
+      font: 16px system-ui;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
     }
+    main {
+      max-width: 30rem;
+      margin: 1.5rem;
+      padding: 2rem;
+      background: #151515;
+      border-radius: 1rem;
+    }
+    p {
+      color: #bbb;
+      line-height: 1.6;
+    }
+    a {
+      display: inline-block;
+      color: #fff;
+      background: #5865f2;
+      padding: .8rem 1.2rem;
+      border-radius: .5rem;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Invite temporarily unavailable</h1>
+    <p>We couldn't open this community right now. Please try again shortly.</p>
+    <a href="">Try again</a>
+  </main>
+</body>
+</html>`),
 
-    // Secure database transaction to log both analytics and profile stats
-    await prisma.$transaction([
-      prisma.joinClick.create({
-        data: { serverId: server.id },
-      }),
-      prisma.server.update({
-        where: { id: server.id },
-        // Make sure you have joinCount in your Server schema, otherwise remove this update block
-        data: { joinCount: { increment: 1 } },
-      }),
-    ]);
+          json: () =>
+            res.json({
+              error:
+                "This server's invite is temporarily unavailable. Please try again later.",
+            }),
+        });
 
-    // Redirect to Discord invite
-    res.redirect(server.inviteLink);
-  } catch (error) {
-    console.error("Join Tracking Error:", error);
-    res.status(500).json({ error: "Failed to process join" });
-  }
-});
+        return;
+      }
+
+      // Analytics should not block a working invitation.
+      try {
+        await prisma.$transaction([
+          prisma.joinClick.create({
+            data: {
+              serverId: server.id,
+            },
+          }),
+
+          prisma.server.update({
+            where: {
+              id: server.id,
+            },
+            data: {
+              joinCount: {
+                increment: 1,
+              },
+            },
+          }),
+        ]);
+      } catch (error) {
+        console.error(
+          "Join analytics could not be recorded:",
+          error,
+        );
+      }
+
+      res.redirect(connection.inviteLink);
+    } catch (error) {
+      console.error("Join Tracking Error:", error);
+
+      res.status(500).json({
+        error: "Failed to process join",
+      });
+    }
+  },
+);
 
 // Route: Fetch Text Channels for a specific guild (Requires Bot Token)
 router.get(

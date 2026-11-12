@@ -6,6 +6,9 @@ import * as bumpCommand from "./commands/challenge.js"; // 👑 UPDATED IMPORT A
 import * as remindersCommand from "../bot/commands/reminder.js"
 import { startReminderEngine } from "./listeners/reminderEngine.js";
 import { registerGuildUpdate } from "./listeners/guildUpdate.js";
+import { startConnectionRecovery } from "./listeners/connectionRecovery.js";
+import { createConnectionRecovery } from "./services/connectionRecovery.js";
+
 
 const client = new Client({
   intents: [
@@ -15,6 +18,13 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessageReactions
   ],
+});
+
+export const connectionRecovery =
+  createConnectionRecovery(client);
+
+client.on(Events.Error, (error) => {
+  console.error("[BOT] Discord client error:", error);
 });
 
 client.once(Events.ClientReady, async () => {
@@ -38,7 +48,8 @@ client.once(Events.ClientReady, async () => {
   registerMessageCreate(client); // This now only tracks the 5-min heartbeat
   registerGuildUpdate(client);
   startDormancyCheck(); // The garbage collector that hides dead servers
-  startReminderEngine(client);
+  startReminderEngine(client, connectionRecovery); // The engine that sends bump reminders
+  startConnectionRecovery(client, connectionRecovery); // The engine that recovers lost connections
 });
 
 // 3. The Slash Command Listener (The Trigger)

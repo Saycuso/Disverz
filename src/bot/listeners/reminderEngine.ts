@@ -1,69 +1,169 @@
-import { Client, TextChannel, EmbedBuilder } from "discord.js";
+import {
+  ChannelType,
+  EmbedBuilder,
+  type Client,
+} from "discord.js";
 import { prisma } from "../../lib/prisma.js";
+import {
+  discordErrorCode,
+  type ConnectionRecovery,
+} from "../services/connectionRecovery.js";
 
-export const startReminderEngine = (client: Client) => {
-  console.log("⏰ Reminder Engine started...");
+export function createReminderRunner(
+  client: Client,
+  recovery: ConnectionRecovery,
+  database = prisma,
+) {
+  let running = false;
 
-  // Run this check every 5 minutes (300,000 ms)
-  setInterval(async () => {
+  return async function runReminders() {
+    if (running || !client.isReady()) return;
+
+    running = true;
+
     try {
-      // 👑 Define your threshold (e.g., 2 hours ago)
-      // Change this math to match whatever your cooldown is!
-      const bumpCooldown = new Date(Date.now() - 2 * 60 * 60 * 1000); 
+      const bumpCooldown = new Date(
+        Date.now() - 2 * 60 * 60 * 1000,
+      );
 
-      const serversToRemind = await prisma.server.findMany({
+      const servers = await database.server.findMany({
         where: {
-          bumpReminders: true,       // They want reminders
-          reminderSent: false,       // We haven't reminded them yet
-          challengeChannelId: { not: null }, // They set up a channel
+          isClaimed: true,
+          isPublicIndex: false,
+          bumpReminders: true,
+          reminderSent: false,
+
+          // Missing channels also get a recovery attempt.
           OR: [
             { lastChallengeAt: { lt: bumpCooldown } },
-            { lastChallengeAt: null }
-          ] 
-        }
+            { lastChallengeAt: null },
+          ],
+        },
       });
 
-      for (const server of serversToRemind) {
-        if (!server.challengeChannelId) continue;
-
+      for (const server of servers) {
         try {
-          // 1. Fetch the channel from Discord
-          const channel = await client.channels.fetch(server.challengeChannelId) as TextChannel;
-          
-          // 2. Build a clean, premium embed
-          const reminderEmbed = new EmbedBuilder()
+          const connection = await recovery.ensure(
+            server.id,
+          );
+
+          if (!connection.reminderChannelId) {
+            continue;
+          }
+
+          // Settings may have changed while recovery ran.
+          const current =
+            await database.server.findUnique({
+              where: { id: server.id },
+            });
+
+          if (
+            !current?.bumpReminders ||
+            current.reminderSent ||
+            current.challengeChannelId !==
+              connection.reminderChannelId ||
+            (current.lastChallengeAt &&
+              current.lastChallengeAt >= bumpCooldown)
+          ) {
+            continue;
+          }
+
+          const channel = await client.channels.fetch(
+            connection.reminderChannelId,
+            { force: true },
+          );
+
+          if (
+            !channel ||
+            !(
+              channel.type === ChannelType.GuildText ||
+              channel.type ===
+                ChannelType.GuildAnnouncement
+            ) ||
+            channel.guild.id !== server.discordId
+          ) {
+            recovery.invalidate(server.id);
+            continue;
+          }
+
+          const embed = new EmbedBuilder()
             .setColor("#ff5500")
             .setTitle("⚠️ Time to Pulse!")
-            .setDescription(`Your server is dropping in the Disverz rankings! Use \`/bump\` to refresh your pulse and climb back to the top.`)
-            .setFooter({ text: "Disverz Network", iconURL: client.user?.displayAvatarURL() ||"" });
+            .setDescription(
+              "Your server is dropping in the Disverz rankings! " +
+                "Use `/bump` to refresh your pulse and climb back to the top.",
+            )
+            .setFooter({
+              text: "Disverz Network",
+            });
 
-          // 3. Send the ping
-          await channel.send({ embeds: [reminderEmbed] });
+          const avatar =
+            client.user?.displayAvatarURL();
 
-          // 4. Mark as sent in the database so we don't spam them
-          await prisma.server.update({
-            where: { id: server.id },
-            data: { reminderSent: true }
+          if (avatar) {
+            embed.setFooter({
+              text: "Disverz Network",
+              iconURL: avatar,
+            });
+          }
+
+          await channel.send({
+            embeds: [embed],
+            allowedMentions: { parse: [] },
           });
 
-          console.log(`✅ Sent bump reminder to ${server.name}`);
-        } catch (discordErr: any) {
-          // 👑 THE FIX: Catch the Missing Access Error and auto-disable
-          if (discordErr.code === 50001) {
-            console.log(`[REMINDER ENGINE] 🚫 Missing access in server: ${server.name}. Auto-disabling reminders.`);
-            
-            await prisma.server.update({
-              where: { id: server.id },
-              data: { bumpReminders: false } // Shut it off so we stop trying
-            });
-          } else {
-            // Log other random API errors normally but cleanly
-            console.error(`[REMINDER ENGINE] Failed to send to ${server.name} - Error ${discordErr.code || 'UNKNOWN'}: ${discordErr.message || 'Unknown Error'}`);
-          }
+          // Mark only the bump we actually reminded about.
+          // A new bump during the send keeps its future reminder.
+          await database.server.updateMany({
+            where: {
+              id: current.id,
+              bumpReminders: true,
+              reminderSent: false,
+              challengeChannelId:
+                connection.reminderChannelId,
+              lastChallengeAt: current.lastChallengeAt,
+            },
+            data: {
+              reminderSent: true,
+            },
+          });
+
+          console.log(
+            `[REMINDER ENGINE] Sent bump reminder to ${server.name}`,
+          );
+        } catch (error) {
+          const code = discordErrorCode(error);
+
+          recovery.invalidate(server.id);
+
+          console.error(
+            `[REMINDER ENGINE] Send failed for ${server.name}; ` +
+              `will recheck before retrying (${code ?? "UNKNOWN"}).`,
+          );
         }
       }
     } catch (error) {
-      console.error("Reminder Engine Error:", error);
+      console.error(
+        "[REMINDER ENGINE] Cycle failed:",
+        error,
+      );
+    } finally {
+      running = false;
     }
-  }, 300000); // 5 minutes
-};
+  };
+}
+
+export function startReminderEngine(
+  client: Client,
+  recovery: ConnectionRecovery,
+) {
+  console.log("⏰ Reminder Engine started...");
+
+  const run = createReminderRunner(client, recovery);
+
+  const timer = setInterval(() => {
+    void run();
+  }, 5 * 60_000);
+
+  timer.unref();
+}
